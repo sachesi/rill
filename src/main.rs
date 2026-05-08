@@ -12,7 +12,7 @@ use gtk::prelude::*;
 
 use crate::engine::TorrentEngine;
 
-const APP_ID: &str = "xyz.sachesi.Rill";
+const APP_ID: &str = "com.github.sachesi.rill";
 
 fn main() {
     pretty_env_logger::init();
