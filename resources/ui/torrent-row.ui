@@ -76,7 +76,6 @@
             <accessibility>
               <property name="label">Pause torrent</property>
             </accessibility>
-            <signal name="clicked" handler="on_action_clicked" swapped="no"/>
           </object>
         </child>
       </object>

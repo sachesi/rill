@@ -98,14 +98,6 @@ mod imp {
 
     #[gtk::template_callbacks]
     impl RillWindow {
-        #[template_callback]
-        fn on_add_clicked(&self, _button: &gtk::Button) {
-            let engine = self.engine.borrow();
-            let tx = self.tx.borrow();
-            if let (Some(engine), Some(tx)) = (engine.as_ref(), tx.as_ref()) {
-                show_add_dialog(&self.obj(), engine.clone(), tx.clone());
-            }
-        }
     }
 
     impl ObjectImpl for RillWindow {}
@@ -151,6 +143,7 @@ impl RillWindow {
         window.setup_update_loop(rx);
         window.setup_key_controller();
         window.setup_search();
+        window.setup_add_button();
         window.setup_breakpoints();
         window
     }
@@ -297,6 +290,28 @@ impl RillWindow {
     fn setup_breakpoints(&self) {
         // Clamp handles responsive width automatically.
         // Margins defined in the template already work for most screen sizes.
+    }
+
+    fn setup_add_button(&self) {
+        let engine = self.imp().engine.borrow().clone();
+        let tx = self.imp().tx.borrow().clone();
+        let window = self.downgrade();
+        let add_btn = self.imp().add_btn.clone();
+        add_btn.connect_clicked(move |_| {
+            let window = match window.upgrade() {
+                Some(w) => w,
+                None => return,
+            };
+            let engine = match engine.as_ref() {
+                Some(e) => e,
+                None => return,
+            };
+            let tx = match tx.as_ref() {
+                Some(t) => t,
+                None => return,
+            };
+            show_add_dialog(&window, engine.clone(), tx.clone());
+        });
     }
 
     fn setup_update_loop(&self, rx: async_channel::Receiver<UiEvent>) {

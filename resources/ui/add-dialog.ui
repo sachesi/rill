@@ -14,7 +14,6 @@
             <child type="start">
               <object class="GtkButton" id="cancel_btn">
                 <property name="label">Cancel</property>
-                <signal name="clicked" handler="on_cancel_clicked" swapped="no"/>
               </object>
             </child>
             <child type="end">
@@ -22,7 +21,6 @@
                 <property name="label">Add</property>
                 <property name="css-classes">suggested-action</property>
                 <property name="sensitive">false</property>
-                <signal name="clicked" handler="on_add_clicked" swapped="no"/>
               </object>
             </child>
           </object>
@@ -85,8 +83,6 @@
                     <child>
                       <object class="AdwEntryRow" id="url_entry">
                         <property name="title">Magnet Link or HTTP URL</property>
-                        <signal name="changed" handler="on_url_changed" swapped="no"/>
-                        <signal name="apply" handler="on_url_apply" swapped="no"/>
                       </object>
                     </child>
                   </object>
@@ -99,7 +95,6 @@
                       <object class="AdwActionRow" id="file_row">
                         <property name="title">Browse for .torrent file</property>
                         <property name="activatable">true</property>
-                        <signal name="activated" handler="on_file_browse_clicked" swapped="no"/>
                         <child type="suffix">
                           <object class="GtkImage" id="file_arrow">
                             <property name="icon-name">go-next-symbolic</property>
@@ -120,7 +115,6 @@
                         <property name="title">Download Folder</property>
                         <property name="subtitle" bind-source="folder_label" bind-property="label"/>
                         <property name="activatable">true</property>
-                        <signal name="activated" handler="on_folder_browse_clicked" swapped="no"/>
                         <child type="suffix">
                           <object class="GtkImage" id="folder_arrow">
                             <property name="icon-name">go-next-symbolic</property>

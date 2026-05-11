@@ -50,22 +50,6 @@ mod imp {
 
     #[gtk::template_callbacks]
     impl RillRow {
-        #[template_callback]
-        fn on_action_clicked(&self, _button: &gtk::Button) {
-            let info_hash = self.info_hash.borrow().clone();
-            let state = *self.state.borrow();
-
-            if let Some(engine) = self.engine.borrow().as_ref() {
-                match state {
-                    TorrentUiState::Downloading | TorrentUiState::Paused => {
-                        engine.borrow().toggle(&info_hash);
-                    }
-                    TorrentUiState::Completed | TorrentUiState::Error => {
-                        engine.borrow().stop(&info_hash);
-                    }
-                }
-            }
-        }
     }
 
     impl ObjectImpl for RillRow {}
@@ -104,6 +88,15 @@ impl RillRow {
         });
         row.add_controller(gesture);
 
+        // Action button
+        let row_weak = row.downgrade();
+        let action_btn = imp.action_btn.clone();
+        action_btn.connect_clicked(move |_| {
+            if let Some(row) = row_weak.upgrade() {
+                row.on_action();
+            }
+        });
+
         row
     }
 
@@ -117,6 +110,22 @@ impl RillRow {
 
     pub fn name(&self) -> String {
         self.imp().name_lbl.text().to_string()
+    }
+
+    fn on_action(&self) {
+        let imp = self.imp();
+        let info_hash = imp.info_hash.borrow().clone();
+        let state = *imp.state.borrow();
+        if let Some(engine) = imp.engine.borrow().as_ref() {
+            match state {
+                TorrentUiState::Downloading | TorrentUiState::Paused => {
+                    engine.borrow().toggle(&info_hash);
+                }
+                TorrentUiState::Completed | TorrentUiState::Error => {
+                    engine.borrow().stop(&info_hash);
+                }
+            }
+        }
     }
 
     pub fn update(&self, update: &UiUpdate) {
