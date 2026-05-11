@@ -20,6 +20,13 @@
                 <signal name="clicked" handler="on_add_clicked" swapped="no"/>
               </object>
             </child>
+            <child type="title">
+              <object class="GtkSearchEntry" id="search_entry">
+                <property name="placeholder-text">Search torrents…</property>
+                <property name="hexpand">true</property>
+                <property name="visible">false</property>
+              </object>
+            </child>
             <child type="end">
               <object class="GtkMenuButton" id="menu_btn">
                 <property name="icon-name">open-menu-symbolic</property>
@@ -69,7 +76,7 @@
                     </child>
                     <child>
                       <object class="GtkListBox" id="dl_list">
-                        <property name="selection-mode">none</property>
+                        <property name="selection-mode">single</property>
                         <property name="css-classes">boxed-list</property>
                         <property name="visible">false</property>
                       </object>
@@ -88,7 +95,7 @@
                     </child>
                     <child>
                       <object class="GtkListBox" id="pause_list">
-                        <property name="selection-mode">none</property>
+                        <property name="selection-mode">single</property>
                         <property name="css-classes">boxed-list</property>
                         <property name="visible">false</property>
                       </object>
@@ -107,7 +114,7 @@
                     </child>
                     <child>
                       <object class="GtkListBox" id="done_list">
-                        <property name="selection-mode">none</property>
+                        <property name="selection-mode">single</property>
                         <property name="css-classes">boxed-list</property>
                         <property name="visible">false</property>
                       </object>

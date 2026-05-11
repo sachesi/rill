@@ -115,6 +115,10 @@ impl RillRow {
         *self.imp().state.borrow()
     }
 
+    pub fn name(&self) -> String {
+        self.imp().name_lbl.text().to_string()
+    }
+
     pub fn update(&self, update: &UiUpdate) {
         let imp = self.imp();
 

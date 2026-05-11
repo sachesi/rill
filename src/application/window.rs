@@ -70,7 +70,9 @@ mod imp {
         pub done_header: TemplateChild<gtk::Label>,
         #[template_child]
         pub done_list: TemplateChild<gtk::ListBox>,
-        
+        #[template_child]
+        pub search_entry: TemplateChild<gtk::SearchEntry>,
+
         // Engine and model
         pub engine: RefCell<Option<Rc<RefCell<TorrentEngine>>>>,
         pub model: RefCell<Option<Rc<RefCell<TorrentModel>>>>,
@@ -147,7 +149,148 @@ impl RillWindow {
         window.imp().tx.replace(Some(tx));
         
         window.setup_update_loop(rx);
+        window.setup_key_controller();
+        window.setup_search();
         window
+    }
+
+    fn setup_key_controller(&self) {
+        let key_controller = gtk::EventControllerKey::new();
+        let window = self.downgrade();
+        key_controller.connect_key_pressed(move |_controller, keyval, _keycode, state| {
+            let window = match window.upgrade() {
+                Some(w) => w,
+                None => return glib::Propagation::Proceed,
+            };
+
+            if state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+                if let Some(ref name) = keyval.name() {
+                    if &**name == "f" {
+                        window.toggle_search();
+                        return glib::Propagation::Stop;
+                    }
+                }
+                return glib::Propagation::Proceed;
+            }
+
+            if let Some(ref name) = keyval.name() {
+                match &**name as &str {
+                    "Delete" => {
+                        window.delete_selected();
+                        return glib::Propagation::Stop;
+                    }
+                    "space" => {
+                        window.toggle_selected();
+                        return glib::Propagation::Stop;
+                    }
+                    "Escape" => {
+                        if window.imp().search_entry.is_visible() {
+                            window.imp().search_entry.set_text("");
+                            window.imp().search_entry.set_visible(false);
+                            window.imp().window_title.set_visible(true);
+                            window.clear_search_filter();
+                            return glib::Propagation::Stop;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            glib::Propagation::Proceed
+        });
+        self.add_controller(key_controller);
+    }
+
+    fn toggle_search(&self) {
+        let visible = self.imp().search_entry.is_visible();
+        if visible {
+            self.imp().search_entry.set_text("");
+            self.imp().search_entry.set_visible(false);
+            self.imp().window_title.set_visible(true);
+            self.clear_search_filter();
+        } else {
+            self.imp().search_entry.set_visible(true);
+            self.imp().window_title.set_visible(false);
+            self.imp().search_entry.grab_focus();
+        }
+    }
+
+    fn setup_search(&self) {
+        let window = self.downgrade();
+        let search_entry = self.imp().search_entry.clone();
+        search_entry.connect_search_changed(move |entry| {
+            let window = match window.upgrade() {
+                Some(w) => w,
+                None => return,
+            };
+            let query = entry.text().to_string();
+            Self::apply_search_filter(&window, &query);
+        });
+    }
+
+    fn apply_search_filter(&self, query: &str) {
+        let rows = self.imp().rows.borrow();
+        if query.is_empty() {
+            for row in rows.values() {
+                row.set_visible(true);
+            }
+        } else {
+            let lower = query.to_lowercase();
+            for (id, row) in rows.iter() {
+                let name_lower = row.name().to_lowercase();
+                row.set_visible(name_lower.contains(&lower) || id.contains(&lower));
+            }
+        }
+        self.update_section_visibility();
+    }
+
+    fn clear_search_filter(&self) {
+        let rows = self.imp().rows.borrow();
+        for row in rows.values() {
+            row.set_visible(true);
+        }
+        self.update_section_visibility();
+    }
+
+    fn selected_row(&self) -> Option<RillRow> {
+        for list in [&self.imp().dl_list, &self.imp().pause_list, &self.imp().done_list] {
+            if let Some(row) = list.selected_row() {
+                if let Ok(rill_row) = row.downcast::<RillRow>() {
+                    return Some(rill_row);
+                }
+            }
+        }
+        None
+    }
+
+    fn toggle_selected(&self) {
+        if let Some(row) = self.selected_row() {
+            let state = row.state();
+            match state {
+                TorrentUiState::Downloading | TorrentUiState::Paused => {
+                    if let Some(engine) = self.imp().engine.borrow().as_ref() {
+                        engine.borrow().toggle(&row.info_hash());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn delete_selected(&self) {
+        if let Some(row) = self.selected_row() {
+            let info_hash = row.info_hash();
+            if let Some(engine) = self.imp().engine.borrow().as_ref() {
+                engine.borrow().stop(&info_hash);
+            }
+            self.imp().dl_list.remove(&row);
+            self.imp().pause_list.remove(&row);
+            self.imp().done_list.remove(&row);
+            self.imp().rows.borrow_mut().remove(&info_hash);
+            if let Some(model) = self.imp().model.borrow().as_ref() {
+                model.borrow_mut().remove_torrent(&info_hash);
+            }
+            self.update_section_visibility();
+        }
     }
 
     fn setup_update_loop(&self, rx: async_channel::Receiver<UiEvent>) {
