@@ -24,8 +24,9 @@ pub struct UiUpdate {
     pub uri: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum TorrentUiState {
+    #[default]
     Downloading,
     Paused,
     Completed,
@@ -43,6 +44,7 @@ struct ActiveTorrent {
     canceller: Arc<()>,
     uri: String,
     output_dir: PathBuf,
+    ui_tx: Sender<UiEvent>,
 }
 
 enum EngineCmd {
@@ -57,6 +59,7 @@ enum EngineCmd {
 #[derive(Debug)]
 pub struct TorrentEngine {
     active: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
+    saved: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<EngineCmd>,
     peer_id: PeerId,
     config_dir: PathBuf,
@@ -72,6 +75,7 @@ impl TorrentEngine {
         dht_sink: dht::CommandSink,
     ) -> Self {
         let active: Arc<Mutex<HashMap<String, ActiveTorrent>>> = Arc::new(Mutex::new(HashMap::new()));
+        let saved: Arc<Mutex<HashMap<String, ActiveTorrent>>> = Arc::new(Mutex::new(HashMap::new()));
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<EngineCmd>();
 
         let config_dir_clone = config_dir.clone();
@@ -137,6 +141,7 @@ impl TorrentEngine {
 
         Self {
             active,
+            saved,
             cmd_tx,
             peer_id,
             config_dir,
@@ -157,6 +162,7 @@ impl TorrentEngine {
             canceller: Arc::clone(&canceller),
             uri: uri.clone(),
             output_dir: output_dir.clone(),
+            ui_tx: ui_tx.clone(),
         });
         drop(map);
 
@@ -171,15 +177,36 @@ impl TorrentEngine {
 
     pub fn stop(&self, info_hash: &str) {
         self.active.lock().unwrap().remove(info_hash);
+        self.saved.lock().unwrap().remove(info_hash);
     }
 
     pub fn toggle(&self, info_hash: &str) {
-        let mut map = self.active.lock().unwrap();
-        if map.contains_key(info_hash) {
-            map.remove(info_hash);
-        } else {
-            // Can't resume without saved state
-            log::warn!("Cannot resume {info_hash}: no saved state");
+        let mut active_map = self.active.lock().unwrap();
+        let mut saved_map = self.saved.lock().unwrap();
+        if active_map.contains_key(info_hash) {
+            // Pause: move from active to saved
+            if let Some(torrent) = active_map.remove(info_hash) {
+                saved_map.insert(info_hash.to_string(), torrent);
+            }
+        } else if let Some(torrent) = saved_map.remove(info_hash) {
+            // Resume: move from saved to active, restart download
+            drop(active_map);
+            drop(saved_map);
+            let canceller = Arc::new(());
+            let ui_tx = torrent.ui_tx.clone();
+            let _ = self.cmd_tx.send(EngineCmd::Start {
+                uri: torrent.uri.clone(),
+                output_dir: torrent.output_dir.clone(),
+                canceller: Arc::clone(&canceller),
+                ui_tx: ui_tx.clone(),
+            });
+            let mut active_map2 = self.active.lock().unwrap();
+            active_map2.insert(info_hash.to_string(), ActiveTorrent {
+                canceller,
+                uri: torrent.uri,
+                output_dir: torrent.output_dir,
+                ui_tx,
+            });
         }
     }
 
@@ -187,9 +214,18 @@ impl TorrentEngine {
         self.active.lock().unwrap().contains_key(info_hash)
     }
 
+    pub fn is_paused(&self, info_hash: &str) -> bool {
+        self.saved.lock().unwrap().contains_key(info_hash)
+    }
+
     pub fn saved_torrent(&self, info_hash: &str) -> Option<(String, PathBuf)> {
         let map = self.active.lock().unwrap();
-        map.get(info_hash).map(|t| (t.uri.clone(), t.output_dir.clone()))
+        if let Some(t) = map.get(info_hash) {
+            return Some((t.uri.clone(), t.output_dir.clone()));
+        }
+        drop(map);
+        let saved_map = self.saved.lock().unwrap();
+        saved_map.get(info_hash).map(|t| (t.uri.clone(), t.output_dir.clone()))
     }
 }
 
