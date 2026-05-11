@@ -53,11 +53,11 @@ fn main() {
     // Keep runtimes alive on background threads until app exits
     std::thread::spawn(move || {
         let local = tokio::task::LocalSet::new();
-        pwp_rt.block_on(local);
+        pwp_rt.block_on(local.run_until(std::future::pending::<()>()));
     });
     std::thread::spawn(move || {
         let local = tokio::task::LocalSet::new();
-        storage_rt.block_on(local);
+        storage_rt.block_on(local.run_until(std::future::pending::<()>()));
     });
 
     let (_dht_worker, dht_cmds) = mt::app::dht::launch_dht_node_runtime(mt::app::dht::Config {
