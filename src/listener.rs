@@ -42,7 +42,7 @@ impl StateListener for GtkListener {
     const INTERVAL: Duration = Duration::from_secs(1);
 
     fn on_snapshot(&mut self, snapshot: StateSnapshot<'_>) -> ControlFlow<()> {
-        if self.canceller.strong_count() == 0 {
+        if self.canceller.strong_count() < 2 {
             let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
                 info_hash: self.info_hash.clone(),
                 name: String::new(),

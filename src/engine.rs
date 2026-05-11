@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_channel::Sender;
 use mtorrent::app;
@@ -9,6 +10,7 @@ use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 use crate::listener::GtkListener;
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct UiUpdate {
     pub info_hash: String,
     pub name: String,
@@ -22,7 +24,7 @@ pub struct UiUpdate {
     pub uri: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TorrentUiState {
     Downloading,
     Paused,
@@ -32,16 +34,31 @@ pub enum TorrentUiState {
 
 pub enum UiEvent {
     Update(UiUpdate),
-    Finished {
-        info_hash: String,
-        error: Option<String>,
+    Finished { info_hash: String, error: Option<String> },
+}
+
+#[allow(dead_code)]
+struct ActiveTorrent {
+    canceller: Arc<()>,
+    uri: String,
+    output_dir: PathBuf,
+}
+
+enum EngineCmd {
+    Start {
+        uri: String,
+        output_dir: PathBuf,
+        canceller: Arc<()>,
     },
 }
 
 pub struct TorrentEngine {
     tx: Sender<UiEvent>,
-    start_tx: tokio::sync::mpsc::UnboundedSender<(String, PathBuf)>,
-    _thread: std::thread::JoinHandle<()>,
+    active: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
+    cmd_tx: tokio::sync::mpsc::UnboundedSender<EngineCmd>,
+    peer_id: PeerId,
+    config_dir: PathBuf,
+    dht_sink: dht::CommandSink,
 }
 
 impl TorrentEngine {
@@ -53,10 +70,16 @@ impl TorrentEngine {
         dht_sink: dht::CommandSink,
     ) -> Self {
         let (tx, _rx) = async_channel::unbounded();
-        let (start_tx, mut start_rx) = tokio::sync::mpsc::unbounded_channel::<(String, PathBuf)>();
+        let active: Arc<Mutex<HashMap<String, ActiveTorrent>>> = Arc::new(Mutex::new(HashMap::new()));
+        let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<EngineCmd>();
 
         let tx_clone = tx.clone();
-        let thread = std::thread::spawn(move || {
+        let config_dir_clone = config_dir.clone();
+        let peer_id_clone = peer_id.clone();
+        let pwp_clone = pwp_handle.clone();
+        let storage_clone = storage_handle.clone();
+        let dht_clone = dht_sink.clone();
+        std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -64,58 +87,62 @@ impl TorrentEngine {
 
             rt.block_on(async {
                 let local = tokio::task::LocalSet::new();
-                local
-                    .run_until(async {
-                        while let Some((uri, output_dir)) = start_rx.recv().await {
-                            let tx = tx_clone.clone();
-                            let pid = peer_id.clone();
-                            let cd = config_dir.clone();
-                            let pwp = pwp_handle.clone();
-                            let stor = storage_handle.clone();
-                            let dht = dht_sink.clone();
-                            let info_hash = hash_uri(&uri);
+                local.run_until(async {
+                    while let Some(cmd) = cmd_rx.recv().await {
+                        match cmd {
+                            EngineCmd::Start { uri, output_dir, canceller } => {
+                                let tx = tx_clone.clone();
+                                let pid = peer_id_clone.clone();
+                                let cd = config_dir_clone.clone();
+                                let pwp = pwp_clone.clone();
+                                let stor = storage_clone.clone();
+                                let dht = dht_clone.clone();
+                                let info_hash = hash_uri(&uri);
 
-                            tokio::task::spawn_local(async move {
-                                let canceller = Arc::new(());
-                                let listener = GtkListener::new(
-                                    Arc::downgrade(&canceller),
-                                    tx.clone(),
-                                    info_hash.clone(),
-                                    uri.clone(),
-                                    output_dir.clone(),
-                                );
-                                let config = app::main::Config {
-                                    local_peer_id: pid,
-                                    output_dir,
-                                    config_dir: cd,
-                                    use_upnp: true,
-                                    pwp_port: None,
-                                    bind_interface: None,
-                                };
-                                let ctx = app::main::Context {
-                                    dht_handle: Some(dht),
-                                    pwp_runtime: pwp,
-                                    storage_runtime: stor,
-                                };
+                                tokio::task::spawn_local(async move {
+                                    let listener = GtkListener::new(
+                                        Arc::downgrade(&canceller),
+                                        tx.clone(),
+                                        info_hash.clone(),
+                                        uri.clone(),
+                                        output_dir.clone(),
+                                    );
+                                    let config = app::main::Config {
+                                        local_peer_id: pid,
+                                        output_dir,
+                                        config_dir: cd,
+                                        use_upnp: true,
+                                        pwp_port: None,
+                                        bind_interface: None,
+                                    };
+                                    let ctx = app::main::Context {
+                                        dht_handle: Some(dht),
+                                        pwp_runtime: pwp,
+                                        storage_runtime: stor,
+                                    };
 
-                                let result = app::main::single_torrent(&uri, listener, config, ctx).await;
-                                let _ = tx
-                                    .send(UiEvent::Finished {
-                                        info_hash,
-                                        error: result.err().map(|e| e.to_string()),
-                                    })
-                                    .await;
-                            });
+                                    let result = app::main::single_torrent(&uri, listener, config, ctx).await;
+                                    let _ = tx
+                                        .send(UiEvent::Finished {
+                                            info_hash,
+                                            error: result.err().map(|e| e.to_string()),
+                                        })
+                                        .await;
+                                });
+                            }
                         }
-                    })
-                    .await;
+                    }
+                }).await;
             });
         });
 
         Self {
             tx,
-            start_tx,
-            _thread: thread,
+            active,
+            cmd_tx,
+            peer_id,
+            config_dir,
+            dht_sink,
         }
     }
 
@@ -123,8 +150,51 @@ impl TorrentEngine {
         self.tx = tx;
     }
 
-    pub fn start(&self, uri: String, output_dir: PathBuf) {
-        let _ = self.start_tx.send((uri, output_dir));
+    pub fn start(&self, uri: String, output_dir: PathBuf) -> String {
+        let info_hash = hash_uri(&uri);
+        let mut map = self.active.lock().unwrap();
+
+        if map.contains_key(&info_hash) {
+            return info_hash;
+        }
+
+        let canceller = Arc::new(());
+        map.insert(info_hash.clone(), ActiveTorrent {
+            canceller: Arc::clone(&canceller),
+            uri: uri.clone(),
+            output_dir: output_dir.clone(),
+        });
+        drop(map);
+
+        let _ = self.cmd_tx.send(EngineCmd::Start {
+            uri,
+            output_dir,
+            canceller,
+        });
+        info_hash
+    }
+
+    pub fn stop(&self, info_hash: &str) {
+        self.active.lock().unwrap().remove(info_hash);
+    }
+
+    pub fn toggle(&self, info_hash: &str) {
+        let mut map = self.active.lock().unwrap();
+        if map.contains_key(info_hash) {
+            map.remove(info_hash);
+        } else {
+            // Can't resume without saved state
+            log::warn!("Cannot resume {info_hash}: no saved state");
+        }
+    }
+
+    pub fn is_active(&self, info_hash: &str) -> bool {
+        self.active.lock().unwrap().contains_key(info_hash)
+    }
+
+    pub fn saved_torrent(&self, info_hash: &str) -> Option<(String, PathBuf)> {
+        let map = self.active.lock().unwrap();
+        map.get(info_hash).map(|t| (t.uri.clone(), t.output_dir.clone()))
     }
 }
 
