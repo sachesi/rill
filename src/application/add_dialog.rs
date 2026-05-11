@@ -26,12 +26,6 @@ mod imp {
         #[template_child]
         pub url_entry: TemplateChild<adw::EntryRow>,
         #[template_child]
-        pub drop_area: TemplateChild<gtk::Frame>,
-        #[template_child]
-        pub drop_label: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub drop_icon: TemplateChild<gtk::Image>,
-        #[template_child]
         pub folder_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub start_immediately_switch: TemplateChild<adw::SwitchRow>,
@@ -217,9 +211,6 @@ impl RillAddDialog {
                     if let Ok(file) = result {
                         if let Some(path) = file.path() {
                             *imp2.selected_file.borrow_mut() = Some(path.clone());
-                            imp2.drop_label.set_label(&path.to_string_lossy());
-                            imp2.drop_icon.set_icon_name(Some("emblem-ok-symbolic"));
-                            imp2.drop_icon.remove_css_class("dim-label");
                             imp2.add_btn.set_sensitive(true);
                         }
                     }

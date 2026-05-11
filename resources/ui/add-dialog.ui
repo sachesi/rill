@@ -37,46 +37,6 @@
                 <property name="orientation">vertical</property>
                 <property name="spacing">18</property>
                 
-                <!-- Drop area -->
-                <child>
-                  <object class="GtkFrame" id="drop_area">
-                    <property name="css-classes">view</property>
-                    <child>
-                      <object class="GtkBox" id="drop_box">
-                        <property name="orientation">vertical</property>
-                        <property name="spacing">12</property>
-                        <property name="margin-top">48</property>
-                        <property name="margin-bottom">48</property>
-                        <property name="margin-start">24</property>
-                        <property name="margin-end">24</property>
-                        <property name="halign">center</property>
-                        
-                        <child>
-                          <object class="GtkImage" id="drop_icon">
-                            <property name="icon-name">document-open-symbolic</property>
-                            <property name="pixel-size">48</property>
-                            <property name="css-classes">dim-label</property>
-                          </object>
-                        </child>
-                        
-                        <child>
-                          <object class="GtkLabel" id="drop_label">
-                            <property name="label">Drop .torrent files here</property>
-                            <property name="css-classes">title-4</property>
-                          </object>
-                        </child>
-                        
-                        <child>
-                          <object class="GtkLabel" id="drop_sublabel">
-                            <property name="label">or use the options below</property>
-                            <property name="css-classes">caption dim-label</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                
                 <!-- URL/Magnet input -->
                 <child>
                   <object class="AdwPreferencesGroup" id="url_group">

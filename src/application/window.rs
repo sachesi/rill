@@ -279,9 +279,9 @@ impl RillWindow {
             if let Some(engine) = self.imp().engine.borrow().as_ref() {
                 engine.borrow().stop(&info_hash);
             }
-            self.imp().dl_list.remove(&row);
-            self.imp().pause_list.remove(&row);
-            self.imp().done_list.remove(&row);
+            // Remove from whichever listbox actually contains this row
+            let list = list_for_state(row.state(), &self.imp());
+            list.remove(&row);
             self.imp().rows.borrow_mut().remove(&info_hash);
             if let Some(model) = self.imp().model.borrow().as_ref() {
                 model.borrow_mut().remove_torrent(&info_hash);
@@ -412,9 +412,9 @@ impl RillWindow {
             existing_row.update(update);
             // Move to correct section if state changed
             if old_state != update.state {
-                self.imp().dl_list.remove(existing_row);
-                self.imp().pause_list.remove(existing_row);
-                self.imp().done_list.remove(existing_row);
+                // Remove from the old section's listbox only
+                let old_list = list_for_state(old_state, &self.imp());
+                old_list.remove(existing_row);
                 let target_list = list_for_state(update.state, &self.imp());
                 target_list.append(existing_row);
                 self.update_section_visibility();
