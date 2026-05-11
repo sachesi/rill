@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-  <template class="RillAddDialog" parent="AdwWindow">
+  <template class="RillAddDialog" parent="GtkWindow">
     <property name="title">Add Torrent</property>
     <property name="default-width">480</property>
     <property name="default-height">360</property>

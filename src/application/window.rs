@@ -12,6 +12,7 @@ use async_channel::Sender;
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
 use crate::model::TorrentModel;
 use super::torrent_row::RillRow;
+use super::RillAddDialog;
 
 const APP_CSS: &str = "
 progressbar.thin > trough,
@@ -231,6 +232,14 @@ impl RillWindow {
     pub fn present(&self) {
         gtk::prelude::GtkWindowExt::present(self);
     }
+
+    pub fn show_add_dialog(&self) {
+        let engine = self.imp().engine.borrow();
+        let tx = self.imp().tx.borrow();
+        if let (Some(engine), Some(tx)) = (engine.as_ref(), tx.as_ref()) {
+            show_add_dialog(self, engine.clone(), tx.clone());
+        }
+    }
 }
 
 fn list_for_state(state: TorrentUiState, imp: &imp::RillWindow) -> &gtk::ListBox {
@@ -241,6 +250,7 @@ fn list_for_state(state: TorrentUiState, imp: &imp::RillWindow) -> &gtk::ListBox
     }
 }
 
-fn show_add_dialog(_window: &RillWindow, _engine: Rc<RefCell<TorrentEngine>>, _tx: Sender<UiEvent>) {
-    log::info!("Add dialog clicked - not implemented yet");
+fn show_add_dialog(window: &RillWindow, engine: Rc<RefCell<TorrentEngine>>, tx: Sender<UiEvent>) {
+    let dialog = RillAddDialog::new(engine, tx, window);
+    dialog.present();
 }

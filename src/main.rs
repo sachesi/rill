@@ -7,16 +7,11 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gtk::prelude::*;
-use adw;
 use mtorrent as mt;
 use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 
 use crate::engine::TorrentEngine;
-use crate::model::TorrentModel;
-use crate::application::RillWindow;
-
-const APP_ID: &str = "com.github.sachesi.rill";
+use crate::application::RillApplication;
 
 fn main() {
     pretty_env_logger::init();
@@ -36,7 +31,6 @@ fn main() {
     let _ = std::fs::create_dir_all(&local_data_dir);
     log::info!("Data directory: {}", local_data_dir.display());
 
-    // Create runtime handles directly with tokio
     let storage_handle = tokio::runtime::Handle::current();
     let pwp_handle = tokio::runtime::Handle::current();
 
@@ -61,18 +55,6 @@ fn main() {
         dht_cmds,
     )));
 
-    let app = adw::Application::builder()
-        .application_id(APP_ID)
-        .build();
-
-    let engine_weak = Rc::downgrade(&engine);
-    app.connect_activate(move |app| {
-        if let Some(engine) = engine_weak.upgrade() {
-            let model = Rc::new(RefCell::new(TorrentModel::new()));
-            let window = RillWindow::new(engine, model, app);
-            window.present();
-        }
-    });
-
+    let app = RillApplication::new(engine);
     std::process::exit(app.run().into());
 }

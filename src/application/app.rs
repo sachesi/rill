@@ -7,8 +7,7 @@ use gtk::{gio, glib};
 use crate::engine::TorrentEngine;
 use crate::model::TorrentModel;
 use super::RillWindow;
-
-const APP_ID: &str = "com.github.sachesi.rill";
+use super::show_preferences;
 
 pub struct RillApplication {
     app: adw::Application,
@@ -19,7 +18,7 @@ pub struct RillApplication {
 impl RillApplication {
     pub fn new(engine: Rc<RefCell<TorrentEngine>>) -> Self {
         let app = adw::Application::builder()
-            .application_id(APP_ID)
+            .application_id("com.github.sachesi.rill")
             .build();
 
         let model = Rc::new(RefCell::new(TorrentModel::new()));
@@ -81,12 +80,33 @@ impl RillApplication {
 
         // Preferences action  
         let prefs_action = gio::SimpleAction::new("preferences", None);
+        let app_weak = self.app.downgrade();
         prefs_action.connect_activate(move |_, _| {
-            // Will be implemented when we have a proper preferences window
-            log::info!("Preferences requested");
+            if let Some(app) = app_weak.upgrade() {
+                if let Some(window) = app.active_window() {
+                    if let Ok(rill_window) = window.downcast::<RillWindow>() {
+                        show_preferences(rill_window.upcast_ref::<adw::ApplicationWindow>());
+                    }
+                }
+            }
         });
         self.app.add_action(&prefs_action);
         self.app.set_accels_for_action("app.preferences", &["<Control>comma"]);
+
+        // Add torrent action
+        let add_action = gio::SimpleAction::new("add-torrent", None);
+        let app_weak = self.app.downgrade();
+        add_action.connect_activate(move |_, _| {
+            if let Some(app) = app_weak.upgrade() {
+                if let Some(window) = app.active_window() {
+                    if let Ok(rill_window) = window.downcast::<RillWindow>() {
+                        rill_window.show_add_dialog();
+                    }
+                }
+            }
+        });
+        self.app.add_action(&add_action);
+        self.app.set_accels_for_action("app.add-torrent", &["<Control>n"]);
     }
 
     pub fn run(&self) -> glib::ExitCode {
