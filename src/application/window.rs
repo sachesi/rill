@@ -1,13 +1,14 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::Duration;
+use std::cell::RefCell;
+
 
 use adw::prelude::*;
-use gtk::{gio, glib};
-use glib::clone;
-
+use adw::subclass::prelude::*;
+use gtk::{gio, glib, glib::clone, glib::subclass::prelude::*};
+use gtk::subclass::prelude::*;
 use async_channel::Sender;
+
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
 use crate::model::TorrentModel;
 
@@ -30,32 +31,100 @@ progressbar.thin > trough > progress {
 }
 ";
 
-pub struct RillWindow {
-    window: adw::ApplicationWindow,
-    engine: Rc<RefCell<TorrentEngine>>,
-    model: Rc<RefCell<TorrentModel>>,
-    
-    // UI components
-    empty: adw::StatusPage,
-    dl_list: gtk::ListBox,
-    pause_list: gtk::ListBox, 
-    done_list: gtk::ListBox,
-    dl_header: gtk::Label,
-    pause_header: gtk::Label,
-    done_header: gtk::Label,
-    
-    // Data tracking
-    rows: Rc<RefCell<HashMap<String, RillRow>>>,
-    tx: Sender<UiEvent>,
+mod imp {
+    use super::*;
+
+    #[derive(Debug, Default, gtk::CompositeTemplate)]
+    #[template(resource = "/com/github/sachesi/rill/ui/window.ui")]
+    pub struct RillWindow {
+        // Template children
+        #[template_child]
+        pub toolbar_view: TemplateChild<adw::ToolbarView>,
+        #[template_child]
+        pub header_bar: TemplateChild<adw::HeaderBar>,
+        #[template_child]
+        pub window_title: TemplateChild<adw::WindowTitle>,
+        #[template_child]
+        pub add_btn: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub menu_btn: TemplateChild<gtk::MenuButton>,
+        #[template_child]
+        pub scroll: TemplateChild<gtk::ScrolledWindow>,
+        #[template_child]
+        pub clamp: TemplateChild<adw::Clamp>,
+        #[template_child]
+        pub content_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub empty_page: TemplateChild<adw::StatusPage>,
+        #[template_child]
+        pub dl_header: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub dl_list: TemplateChild<gtk::ListBox>,
+        #[template_child]
+        pub pause_header: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub pause_list: TemplateChild<gtk::ListBox>,
+        #[template_child]
+        pub done_header: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub done_list: TemplateChild<gtk::ListBox>,
+        
+        // Engine and model
+        pub engine: RefCell<Option<Rc<RefCell<TorrentEngine>>>>,
+        pub model: RefCell<Option<Rc<RefCell<TorrentModel>>>>,
+        pub tx: RefCell<Option<Sender<UiEvent>>>,
+        pub rows: RefCell<HashMap<String, RillRow>>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for RillWindow {
+        const NAME: &'static str = "RillWindow";
+        type Type = super::RillWindow;
+        type ParentType = adw::ApplicationWindow;
+
+        fn class_init(klass: &mut Self::Class) {
+            klass.bind_template();
+            klass.bind_template_callbacks();
+        }
+
+        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
+            obj.init_template();
+        }
+    }
+
+    #[gtk::template_callbacks]
+    impl RillWindow {
+        #[template_callback]
+        fn on_add_clicked(&self, _button: &gtk::Button) {
+            let engine = self.engine.borrow();
+            let tx = self.tx.borrow();
+            if let (Some(engine), Some(tx)) = (engine.as_ref(), tx.as_ref()) {
+                show_add_dialog(&self.obj(), engine.clone(), tx.clone());
+            }
+        }
+    }
+
+    impl ObjectImpl for RillWindow {}
+    impl WidgetImpl for RillWindow {}
+    impl WindowImpl for RillWindow {}
+    impl ApplicationWindowImpl for RillWindow {}
+    impl AdwApplicationWindowImpl for RillWindow {}
+}
+
+glib::wrapper! {
+    pub struct RillWindow(ObjectSubclass<imp::RillWindow>)
+        @extends adw::ApplicationWindow, gtk::ApplicationWindow, gtk::Window, gtk::Widget,
+        @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
 impl RillWindow {
     pub fn new(
-        app: &adw::Application,
         engine: Rc<RefCell<TorrentEngine>>,
         model: Rc<RefCell<TorrentModel>>,
+        app: &adw::Application,
     ) -> Self {
-        // Load CSS
+        let (tx, rx) = async_channel::unbounded();
+        
         let css = gtk::CssProvider::new();
         css.load_from_string(APP_CSS);
         if let Some(display) = gtk::gdk::Display::default() {
@@ -66,284 +135,254 @@ impl RillWindow {
             );
         }
 
-        let (tx, rx) = async_channel::unbounded();
-
-        // Build window
-        let window_self = Self::build_window(app, engine.clone(), model.clone(), tx.clone());
+        let window: Self = glib::Object::builder()
+            .property("application", app)
+            .build();
         
-        // Set up update loop
-        window_self.setup_update_loop(rx);
+        // Store engine, model, and tx
+        window.imp().engine.replace(Some(engine));
+        window.imp().model.replace(Some(model));
+        window.imp().tx.replace(Some(tx));
         
-        window_self
-    }
-
-    fn build_window(
-        app: &adw::Application,
-        engine: Rc<RefCell<TorrentEngine>>,
-        model: Rc<RefCell<TorrentModel>>,
-        tx: Sender<UiEvent>,
-    ) -> Self {
-        // Header bar
-        let title = adw::WindowTitle::new("Rill", "");
-
-        let add_btn = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
-            .tooltip_text("Add Torrent")
-            .build();
-
-        let main_menu = gio::Menu::new();
-        main_menu.append(Some("_Preferences"), Some("app.preferences"));
-        main_menu.append(Some("_About Rill"), Some("app.about"));
-        main_menu.append(Some("_Quit"), Some("app.quit"));
-        
-        let menu_btn = gtk::MenuButton::builder()
-            .icon_name("open-menu-symbolic")
-            .menu_model(&main_menu)
-            .primary(true)
-            .build();
-
-        let header = adw::HeaderBar::builder()
-            .title_widget(&title)
-            .build();
-        header.pack_start(&add_btn);
-        header.pack_end(&menu_btn);
-
-        // Empty state
-        let empty = adw::StatusPage::builder()
-            .icon_name("folder-download-symbolic")
-            .title("No Torrents")
-            .description("Add a magnet link or .torrent file to get started")
-            .vexpand(true)
-            .hexpand(true)
-            .build();
-
-        // Content sections
-        let dl_header = section_label("Downloading");
-        dl_header.set_visible(false);
-        let dl_list = make_listbox();
-        dl_list.set_visible(false);
-
-        let pause_header = section_label("Paused");
-        pause_header.set_visible(false);
-        let pause_list = make_listbox();
-        pause_list.set_visible(false);
-
-        let done_header = section_label("Completed");
-        done_header.set_visible(false);
-        let done_list = make_listbox();
-        done_list.set_visible(false);
-
-        let content_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(12)
-            .build();
-        content_box.append(&empty);
-        content_box.append(&dl_header);
-        content_box.append(&dl_list);
-        content_box.append(&pause_header);
-        content_box.append(&pause_list);
-        content_box.append(&done_header);
-        content_box.append(&done_list);
-
-        let clamp = adw::Clamp::builder()
-            .maximum_size(760)
-            .margin_top(24)
-            .margin_bottom(24)
-            .margin_start(16)
-            .margin_end(16)
-            .child(&content_box)
-            .build();
-
-        let scroll = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .child(&clamp)
-            .build();
-
-        let toolbar_view = adw::ToolbarView::new();
-        toolbar_view.add_top_bar(&header);
-        toolbar_view.set_content(Some(&scroll));
-
-        let window = adw::ApplicationWindow::builder()
-            .application(app)
-            .title("Rill")
-            .default_width(560)
-            .default_height(680)
-            .content(&toolbar_view)
-            .build();
-
-        let rows = Rc::new(RefCell::new(HashMap::new()));
-
-        // Add button click
-        add_btn.connect_clicked(clone!(
-            #[weak] window,
-            #[strong] engine,
-            #[strong] tx,
-            move |_| show_add_dialog(&window, engine.clone(), tx.clone())
-        ));
-
-        Self {
-            window,
-            engine,
-            model,
-            empty,
-            dl_list,
-            pause_list,
-            done_list,
-            dl_header,
-            pause_header,
-            done_header,
-            rows,
-            tx,
-        }
+        window.setup_update_loop(rx);
+        window
     }
 
     fn setup_update_loop(&self, rx: async_channel::Receiver<UiEvent>) {
-        let rx_cell = Rc::new(RefCell::new(rx));
-        
-        glib::timeout_add_local(Duration::from_millis(200), clone!(
-            #[strong(rename_to = model)] self.model,
-            #[strong(rename_to = rows)] self.rows,
-            #[strong(rename_to = dl)] self.dl_list,
-            #[strong(rename_to = pl)] self.pause_list,
-            #[strong(rename_to = cl)] self.done_list,
-            #[strong(rename_to = dlh)] self.dl_header,
-            #[strong(rename_to = ph)] self.pause_header,
-            #[strong(rename_to = ch)] self.done_header,
-            #[strong(rename_to = empty)] self.empty,
-            #[strong(rename_to = engine)] self.engine,
-            #[strong(rename_to = tx)] self.tx,
-            #[strong] rx_cell,
-            move || {
-                let rx = rx_cell.borrow();
+        let window = self.downgrade();
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            if let Some(window) = window.upgrade() {
                 while let Ok(event) = rx.try_recv() {
                     match event {
                         UiEvent::Update(update) => {
-                            // Update the model first
-                            model.borrow_mut().update_torrent(update.clone());
-                            
-                            // Update UI rows
-                            let mut map = rows.borrow_mut();
-                            let row = if let Some(r) = map.get(&update.info_hash) {
-                                r.clone()
-                            } else {
-                                let r = RillRow::new(&update, &engine, tx.clone());
-                                map.insert(update.info_hash.clone(), r.clone());
-                                r
-                            };
-                            row.state.set(update.state.clone());
-                            row.update(&update);
-
-                            let (target, target_header) = match update.state {
-                                TorrentUiState::Downloading => (&dl, &dlh),
-                                TorrentUiState::Paused => (&pl, &ph),
-                                TorrentUiState::Completed | TorrentUiState::Error => (&cl, &ch),
-                            };
-
-                            let cur = row.container.parent()
-                                .and_then(|p| p.downcast::<gtk::ListBox>().ok());
-                            if cur.as_ref() != Some(target) {
-                                if let Some(lb) = cur { lb.remove(&row.container); }
-                                target.append(&row.container);
-                            }
-
-                            target.set_visible(true);
-                            target_header.set_visible(true);
-                            empty.set_visible(false);
+                            window.process_update(&update);
                         }
                         UiEvent::Finished { info_hash, error } => {
-                            if let Some(e) = error {
-                                log::error!("Torrent {info_hash}: {e}");
-                            }
-                            let map = rows.borrow();
-                            if map.is_empty() {
-                                empty.set_visible(true);
-                                dlh.set_visible(false);
-                                dl.set_visible(false);
-                                ph.set_visible(false);
-                                pl.set_visible(false);
-                                ch.set_visible(false);
-                                cl.set_visible(false);
+                            // Handle torrent completion
+                            if let Some(err) = error {
+                                eprintln!("Torrent {} finished with error: {}", info_hash, err);
+                            } else {
+                                println!("Torrent {} completed successfully", info_hash);
                             }
                         }
                     }
                 }
                 glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
             }
-        ));
+        });
+    }
+
+    fn process_update(&self, update: &UiUpdate) {
+        // Update model first
+        if let Some(model) = self.imp().model.borrow().as_ref() {
+            model.borrow_mut().update_torrent(update.clone());
+        }
+        
+        // Update or create UI row
+        let mut rows = self.imp().rows.borrow_mut();
+        if let Some(existing_row) = rows.get(&update.info_hash) {
+            existing_row.update(update);
+        } else {
+            // Create new row
+            let engine = self.imp().engine.borrow();
+            let tx = self.imp().tx.borrow();
+            if let (Some(engine), Some(tx)) = (engine.as_ref(), tx.as_ref()) {
+                let new_row = RillRow::new(update, engine, tx.clone());
+                let row_widget = new_row.row.clone();
+                rows.insert(update.info_hash.clone(), new_row);
+                
+                // Add to appropriate list
+                let target_list = match update.state {
+                    TorrentUiState::Downloading => &self.imp().dl_list,
+                    TorrentUiState::Paused => &self.imp().pause_list,
+                    TorrentUiState::Completed | TorrentUiState::Error => &self.imp().done_list,
+                };
+                target_list.append(&row_widget);
+                
+                // Show/hide sections as needed
+                self.update_section_visibility();
+            }
+        }
+    }
+    
+    fn update_section_visibility(&self) {
+        let dl_has_children = self.imp().dl_list.first_child().is_some();
+        let pause_has_children = self.imp().pause_list.first_child().is_some();
+        let done_has_children = self.imp().done_list.first_child().is_some();
+        
+        self.imp().dl_header.set_visible(dl_has_children);
+        self.imp().dl_list.set_visible(dl_has_children);
+        self.imp().pause_header.set_visible(pause_has_children);
+        self.imp().pause_list.set_visible(pause_has_children);
+        self.imp().done_header.set_visible(done_has_children);
+        self.imp().done_list.set_visible(done_has_children);
+        
+        let has_any = dl_has_children || pause_has_children || done_has_children;
+        self.imp().empty_page.set_visible(!has_any);
     }
 
     pub fn present(&self) {
-        self.window.present();
+        gtk::prelude::GtkWindowExt::present(self);
     }
 }
 
-fn section_label(text: &str) -> gtk::Label {
-    gtk::Label::builder()
-        .label(text)
-        .xalign(0.0)
-        .css_classes(["title-4"])
-        .margin_start(6)
-        .margin_top(12)
-        .build()
-}
-
-fn make_listbox() -> gtk::ListBox {
-    gtk::ListBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .css_classes(["boxed-list"])
-        .build()
-}
-
-// Include RillRow implementation from ui.rs (temporarily)
-// This will be moved to a separate module later
-use std::cell::Cell;
-use std::path::PathBuf;
-
-#[derive(Clone)]
-struct RillRow {
-    container: gtk::ListBoxRow,
-    name_lbl: gtk::Label,
-    status_lbl: gtk::Label,
-    progress: gtk::ProgressBar,
-    icon: gtk::Image,
+// Torrent Row Widget (simplified for now, will be template-based later)
+#[derive(Debug, Clone)]
+pub struct RillRow {
+    row: gtk::ListBoxRow,
+    name_label: gtk::Label,
+    status_label: gtk::Label,
+    progress_bar: gtk::ProgressBar,
     action_btn: gtk::Button,
-    state: Rc<Cell<TorrentUiState>>,
+    state: Rc<RefCell<TorrentUiState>>,
 }
 
 impl RillRow {
-    fn new(update: &UiUpdate, engine: &Rc<RefCell<TorrentEngine>>, tx: Sender<UiEvent>) -> Self {
-        // For now, include basic implementation
-        // Full implementation will be moved from ui.rs
-        let icon = gtk::Image::builder()
-            .icon_name("folder-download-symbolic")
-            .pixel_size(24)
-            .css_classes(["torrent-icon"])
-            .margin_top(4)
-            .margin_bottom(4)
-            .build();
-
-        let container = gtk::ListBoxRow::builder()
+    fn new(update: &UiUpdate, _engine: &Rc<RefCell<TorrentEngine>>, _tx: Sender<UiEvent>) -> Self {
+        let row = gtk::ListBoxRow::builder()
             .activatable(false)
             .selectable(false)
             .build();
 
-        Self {
-            container,
-            name_lbl: gtk::Label::new(None),
-            status_lbl: gtk::Label::new(None), 
-            progress: gtk::ProgressBar::new(),
-            icon,
-            action_btn: gtk::Button::new(),
-            state: Rc::new(Cell::new(update.state.clone())),
-        }
+        let row_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(12)
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+
+        // Icon
+        let icon = gtk::Image::builder()
+            .icon_name("folder-download-symbolic")
+            .pixel_size(24)
+            .css_classes(["torrent-icon"])
+            .build();
+
+        // Info box
+        let info_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(2)
+            .hexpand(true)
+            .valign(gtk::Align::Center)
+            .build();
+
+        let name_label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .single_line_mode(true)
+            .xalign(0.0)
+            .css_classes(["heading"])
+            .build();
+
+        let status_label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .single_line_mode(true)
+            .xalign(0.0)
+            .css_classes(["caption", "dim-label"])
+            .build();
+
+        let progress_bar = gtk::ProgressBar::builder()
+            .hexpand(true)
+            .css_classes(["thin"])
+            .build();
+
+        info_box.append(&name_label);
+        info_box.append(&status_label);
+        info_box.append(&progress_bar);
+
+        // Action button
+        let action_btn = gtk::Button::builder()
+            .icon_name("media-playback-pause-symbolic")
+            .valign(gtk::Align::Center)
+            .css_classes(["circular", "flat"])
+            .build();
+
+        row_box.append(&icon);
+        row_box.append(&info_box);
+        row_box.append(&action_btn);
+        
+        row.set_child(Some(&row_box));
+
+        let rill_row = Self {
+            row,
+            name_label,
+            status_label,
+            progress_bar,
+            action_btn,
+            state: Rc::new(RefCell::new(update.state.clone())),
+        };
+
+        rill_row.update(update);
+        rill_row
     }
 
-    fn update(&self, _update: &UiUpdate) {
-        // Stub implementation - will be filled from ui.rs
+    fn update(&self, update: &UiUpdate) {
+        let name = if update.name.is_empty() {
+            format!("Torrent {}", &update.info_hash[..8])
+        } else {
+            update.name.clone()
+        };
+        self.name_label.set_text(&name);
+        
+        let status = format!(
+            "{} • {} peers",
+            self.format_size(update.downloaded, update.total),
+            update.peers
+        );
+        self.status_label.set_text(&status);
+        
+        let progress = if update.total > 0 {
+            update.downloaded as f64 / update.total as f64
+        } else {
+            0.0
+        };
+        self.progress_bar.set_fraction(progress);
+        
+        // Update button and state
+        *self.state.borrow_mut() = update.state.clone();
+        match update.state {
+            TorrentUiState::Downloading => {
+                self.action_btn.set_icon_name("media-playback-pause-symbolic");
+            }
+            TorrentUiState::Paused => {
+                self.action_btn.set_icon_name("media-playback-start-symbolic");
+            }
+            TorrentUiState::Completed | TorrentUiState::Error => {
+                self.action_btn.set_icon_name("user-trash-symbolic");
+            }
+        }
+    }
+    
+    fn format_size(&self, downloaded: u64, total: u64) -> String {
+        fn format_bytes(bytes: u64) -> String {
+            const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB"];
+            let mut size = bytes as f64;
+            let mut unit_index = 0;
+            
+            while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+                size /= 1024.0;
+                unit_index += 1;
+            }
+            
+            if unit_index == 0 {
+                format!("{} {}", bytes, UNITS[0])
+            } else {
+                format!("{:.1} {}", size, UNITS[unit_index])
+            }
+        }
+        
+        format!("{} of {}", format_bytes(downloaded), format_bytes(total))
     }
 }
 
-// Stub functions - will be moved from ui.rs
-fn show_add_dialog(_window: &adw::ApplicationWindow, _engine: Rc<RefCell<TorrentEngine>>, _tx: Sender<UiEvent>) {
-    log::info!("Add dialog requested - stub");
+
+
+fn show_add_dialog(_window: &RillWindow, _engine: Rc<RefCell<TorrentEngine>>, _tx: Sender<UiEvent>) {
+    // TODO: Implement add dialog with template
+    log::info!("Add dialog clicked - not implemented yet");
 }

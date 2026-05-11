@@ -2,24 +2,31 @@ mod application;
 mod engine;
 mod listener;
 mod model;
-mod ui;
 
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::cell::RefCell;
 
-use mtorrent as mt;
-use mt::utils::re_exports::mtorrent_utils::{peer_id::PeerId, worker};
 use gtk::prelude::*;
+use adw;
+use mtorrent as mt;
+use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 
 use crate::engine::TorrentEngine;
-use crate::application::RillApplication;
+use crate::model::TorrentModel;
+use crate::application::RillWindow;
 
 const APP_ID: &str = "com.github.sachesi.rill";
 
 fn main() {
     pretty_env_logger::init();
     gtk::init().expect("Failed to initialize GTK");
+
+    // Register GResource
+    let resource_data = include_bytes!(concat!(env!("OUT_DIR"), "/rill.gresource"));
+    let resource = gtk::gio::Resource::from_data(&gtk::glib::Bytes::from_static(resource_data))
+        .expect("Failed to load GResource");
+    gtk::gio::resources_register(&resource);
 
     let local_data_dir = dirs_next::data_local_dir()
         .or_else(dirs_next::data_dir)
@@ -29,22 +36,9 @@ fn main() {
     let _ = std::fs::create_dir_all(&local_data_dir);
     log::info!("Data directory: {}", local_data_dir.display());
 
-    let storage_worker = worker::with_runtime(worker::rt::Config {
-        name: "storage".to_owned(),
-        io_enabled: false,
-        time_enabled: false,
-        ..Default::default()
-    })
-    .expect("Failed to create storage runtime");
-
-    let pwp_worker = worker::with_local_runtime(worker::rt::Config {
-        name: "pwp".to_owned(),
-        io_enabled: true,
-        time_enabled: true,
-        max_blocking_threads: 32,
-        ..Default::default()
-    })
-    .expect("Failed to create pwp runtime");
+    // Create runtime handles directly with tokio
+    let storage_handle = tokio::runtime::Handle::current();
+    let pwp_handle = tokio::runtime::Handle::current();
 
     let (_dht_worker, dht_cmds) = mt::app::dht::launch_dht_node_runtime(mt::app::dht::Config {
         local_port: 6881,
@@ -62,12 +56,11 @@ fn main() {
     let engine = Rc::new(RefCell::new(TorrentEngine::new(
         peer_id,
         local_data_dir.clone(),
-        pwp_worker.runtime_handle().clone(),
-        storage_worker.runtime_handle().clone(),
+        pwp_handle,
+        storage_handle,
         dht_cmds,
     )));
 
-    // For now, keep using the old approach until application structure is complete
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .build();
@@ -75,7 +68,9 @@ fn main() {
     let engine_weak = Rc::downgrade(&engine);
     app.connect_activate(move |app| {
         if let Some(engine) = engine_weak.upgrade() {
-            ui::build_ui(app, engine);
+            let model = Rc::new(RefCell::new(TorrentModel::new()));
+            let window = RillWindow::new(engine, model, app);
+            window.present();
         }
     });
 

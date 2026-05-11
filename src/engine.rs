@@ -38,6 +38,7 @@ pub enum UiEvent {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 struct ActiveTorrent {
     canceller: Arc<()>,
     uri: String,
@@ -53,6 +54,7 @@ enum EngineCmd {
     },
 }
 
+#[derive(Debug)]
 pub struct TorrentEngine {
     active: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<EngineCmd>,

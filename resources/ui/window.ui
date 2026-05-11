@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="RillWindow" parent="AdwApplicationWindow">
+    <property name="title">Rill</property>
+    <property name="default-width">560</property>
+    <property name="default-height">680</property>
+    <child>
+      <object class="AdwToolbarView" id="toolbar_view">
+        <child type="top">
+          <object class="AdwHeaderBar" id="header_bar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle" id="window_title">
+                <property name="title">Rill</property>
+              </object>
+            </property>
+            <child type="start">
+              <object class="GtkButton" id="add_btn">
+                <property name="icon-name">list-add-symbolic</property>
+                <property name="tooltip-text">Add Torrent</property>
+                <signal name="clicked" handler="on_add_clicked" swapped="no"/>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="menu_btn">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="menu-model">main_menu</property>
+                <property name="primary">true</property>
+                <property name="tooltip-text">Main Menu</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkScrolledWindow" id="scroll">
+            <property name="hscrollbar-policy">never</property>
+            <child>
+              <object class="AdwClamp" id="clamp">
+                <property name="maximum-size">760</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">16</property>
+                <property name="margin-end">16</property>
+                <child>
+                  <object class="GtkBox" id="content_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">12</property>
+                    
+                    <!-- Empty state -->
+                    <child>
+                      <object class="AdwStatusPage" id="empty_page">
+                        <property name="icon-name">folder-download-symbolic</property>
+                        <property name="title">No Torrents</property>
+                        <property name="description">Add a magnet link or .torrent file to get started</property>
+                        <property name="vexpand">true</property>
+                        <property name="hexpand">true</property>
+                      </object>
+                    </child>
+                    
+                    <!-- Downloading section -->
+                    <child>
+                      <object class="GtkLabel" id="dl_header">
+                        <property name="label">Downloading</property>
+                        <property name="xalign">0.0</property>
+                        <property name="css-classes">title-4</property>
+                        <property name="margin-start">6</property>
+                        <property name="margin-top">12</property>
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkListBox" id="dl_list">
+                        <property name="selection-mode">none</property>
+                        <property name="css-classes">boxed-list</property>
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                    
+                    <!-- Paused section -->
+                    <child>
+                      <object class="GtkLabel" id="pause_header">
+                        <property name="label">Paused</property>
+                        <property name="xalign">0.0</property>
+                        <property name="css-classes">title-4</property>
+                        <property name="margin-start">6</property>
+                        <property name="margin-top">12</property>
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkListBox" id="pause_list">
+                        <property name="selection-mode">none</property>
+                        <property name="css-classes">boxed-list</property>
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                    
+                    <!-- Completed section -->
+                    <child>
+                      <object class="GtkLabel" id="done_header">
+                        <property name="label">Completed</property>
+                        <property name="xalign">0.0</property>
+                        <property name="css-classes">title-4</property>
+                        <property name="margin-start">6</property>
+                        <property name="margin-top">12</property>
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkListBox" id="done_list">
+                        <property name="selection-mode">none</property>
+                        <property name="css-classes">boxed-list</property>
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </child>
+  </template>
+  
+  <menu id="main_menu">
+    <section>
+      <item>
+        <attribute name="label">_Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label">_About Rill</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+      <item>
+        <attribute name="label">_Quit</attribute>
+        <attribute name="action">app.quit</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

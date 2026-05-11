@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="RillRow" parent="GtkListBoxRow">
+    <property name="activatable">false</property>
+    <property name="selectable">false</property>
+    <child>
+      <object class="GtkBox" id="row_box">
+        <property name="orientation">horizontal</property>
+        <property name="spacing">12</property>
+        <property name="margin-top">12</property>
+        <property name="margin-bottom">12</property>
+        <property name="margin-start">12</property>
+        <property name="margin-end">12</property>
+        
+        <!-- Icon container -->
+        <child>
+          <object class="GtkBox" id="icon_wrap">
+            <property name="valign">start</property>
+            <property name="halign">center</property>
+            <property name="width-request">32</property>
+            <child>
+              <object class="GtkImage" id="icon">
+                <property name="icon-name">folder-download-symbolic</property>
+                <property name="pixel-size">24</property>
+                <property name="css-classes">torrent-icon</property>
+                <property name="margin-top">4</property>
+                <property name="margin-bottom">4</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        
+        <!-- Info container -->
+        <child>
+          <object class="GtkBox" id="info_box">
+            <property name="orientation">vertical</property>
+            <property name="spacing">2</property>
+            <property name="hexpand">true</property>
+            <property name="valign">center</property>
+            
+            <child>
+              <object class="GtkLabel" id="name_lbl">
+                <property name="halign">start</property>
+                <property name="ellipsize">end</property>
+                <property name="single-line-mode">true</property>
+                <property name="xalign">0.0</property>
+                <property name="css-classes">heading</property>
+              </object>
+            </child>
+            
+            <child>
+              <object class="GtkLabel" id="status_lbl">
+                <property name="halign">start</property>
+                <property name="ellipsize">end</property>
+                <property name="single-line-mode">true</property>
+                <property name="xalign">0.0</property>
+                <property name="css-classes">caption dim-label</property>
+              </object>
+            </child>
+            
+            <child>
+              <object class="GtkProgressBar" id="progress">
+                <property name="hexpand">true</property>
+                <property name="css-classes">thin</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        
+        <!-- Action button -->
+        <child>
+          <object class="GtkButton" id="action_btn">
+            <property name="icon-name">media-playback-pause-symbolic</property>
+            <property name="valign">center</property>
+            <property name="css-classes">circular flat</property>
+            <signal name="clicked" handler="on_action_clicked" swapped="no"/>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

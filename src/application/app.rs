@@ -38,7 +38,7 @@ impl RillApplication {
             #[weak] engine,
             #[weak] model,
             move |app| {
-                let window = RillWindow::new(app, engine.clone(), model.clone());
+                let window = RillWindow::new(engine.clone(), model.clone(), app);
                 window.present();
             }
         ));
