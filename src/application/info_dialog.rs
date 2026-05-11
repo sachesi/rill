@@ -1,46 +1,43 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use adw::prelude::*;
 use gtk::{gio, glib};
+use adw::prelude::*;
 use gtk::subclass::prelude::*;
 
 use crate::engine::{TorrentUiState, UiUpdate};
 
 mod imp {
     use super::*;
+    use std::cell::RefCell;
 
     #[derive(Debug, Default, gtk::CompositeTemplate)]
     #[template(resource = "/com/github/sachesi/rill/ui/info-dialog.ui")]
     pub struct RillInfoDialog {
         #[template_child]
-        pub name_lbl: TemplateChild<gtk::Label>,
+        pub title_lbl: gtk::TemplateChild<gtk::Label>,
         #[template_child]
-        pub state_lbl: TemplateChild<gtk::Label>,
+        pub state_lbl: gtk::TemplateChild<gtk::Label>,
         #[template_child]
-        pub size_lbl: TemplateChild<gtk::Label>,
+        pub progress_bar: gtk::TemplateChild<gtk::ProgressBar>,
         #[template_child]
-        pub progress_bar: TemplateChild<gtk::ProgressBar>,
+        pub size_lbl: gtk::TemplateChild<gtk::Label>,
         #[template_child]
-        pub speed_down_lbl: TemplateChild<gtk::Label>,
+        pub speed_down_lbl: gtk::TemplateChild<gtk::Label>,
         #[template_child]
-        pub speed_up_lbl: TemplateChild<gtk::Label>,
+        pub speed_up_lbl: gtk::TemplateChild<gtk::Label>,
         #[template_child]
-        pub peers_lbl: TemplateChild<gtk::Label>,
+        pub peers_lbl: gtk::TemplateChild<gtk::Label>,
         #[template_child]
-        pub source_lbl: TemplateChild<gtk::Label>,
+        pub source_lbl: gtk::TemplateChild<gtk::Label>,
         #[template_child]
-        pub save_path_lbl: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub close_btn: TemplateChild<gtk::Button>,
+        pub save_path_lbl: gtk::TemplateChild<gtk::Label>,
 
-        pub update: RefCell<Option<UiUpdate>>,
         pub shared_update: RefCell<Option<Rc<RefCell<Option<UiUpdate>>>>>,
-        pub refresh_source: RefCell<Option<glib::SourceId>>,
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for RillInfoDialog {
+    impl glib::subclass::types::ObjectSubclass for RillInfoDialog {
         const NAME: &'static str = "RillInfoDialog";
         type Type = super::RillInfoDialog;
         type ParentType = gtk::Window;
@@ -54,9 +51,9 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for RillInfoDialog {}
-    impl WidgetImpl for RillInfoDialog {}
-    impl WindowImpl for RillInfoDialog {}
+    impl glib::subclass::object::ObjectImpl for RillInfoDialog {}
+    impl gtk::subclass::widget::WidgetImpl for RillInfoDialog {}
+    impl gtk::subclass::window::WindowImpl for RillInfoDialog {}
 }
 
 glib::wrapper! {
@@ -66,38 +63,27 @@ glib::wrapper! {
 }
 
 impl RillInfoDialog {
-    pub fn new(
-        initial: &UiUpdate,
-        shared_update: Rc<RefCell<Option<UiUpdate>>>,
-        parent: &impl IsA<gtk::Window>,
-    ) -> Self {
-        let dialog: Self = glib::Object::builder()
-            .property("transient-for", parent)
-            .property("modal", true)
-            .build();
-
-        dialog.imp().update.replace(Some(initial.clone()));
-        dialog.imp().shared_update.replace(Some(shared_update));
-        dialog.apply_update(initial);
-
-        // Close button
-        let dlg_weak = dialog.downgrade();
-        dialog.imp().close_btn.connect_clicked(move |_| {
-            if let Some(d) = dlg_weak.upgrade() {
-                if let Some(id) = d.imp().refresh_source.borrow_mut().take() {
-                    id.remove();
-                }
-                d.close();
-            }
-        });
-
-        // Auto-refresh every 500ms
-        let dlg_weak = dialog.downgrade();
-        let source_id = glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
-            if let Some(d) = dlg_weak.upgrade() {
-                if let Some(shared) = d.imp().shared_update.borrow().as_ref() {
-                    if let Some(update) = shared.borrow().as_ref() {
-                        d.apply_update(update);
+    pub fn new(shared_update: Rc<RefCell<Option<UiUpdate>>>, name: &str) -> Self {
+        let obj: Self = glib::Object::builder().build();
+        
+        // Set window title to torrent name
+        obj.imp().title_lbl.set_text(name);
+        
+        // Store the shared update reference
+        *obj.imp().shared_update.borrow_mut() = Some(shared_update.clone());
+        
+        // Apply initial update if available
+        if let Some(update) = shared_update.borrow().as_ref() {
+            obj.apply_update(update);
+        }
+        
+        // Set up auto-refresh timer
+        let obj_weak = obj.downgrade();
+        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+            if let Some(obj) = obj_weak.upgrade() {
+                if let Some(shared_ref) = obj.imp().shared_update.borrow().as_ref() {
+                    if let Some(update) = shared_ref.borrow().as_ref() {
+                        obj.apply_update(update);
                     }
                 }
                 glib::ControlFlow::Continue
@@ -105,82 +91,80 @@ impl RillInfoDialog {
                 glib::ControlFlow::Break
             }
         });
-        dialog.imp().refresh_source.replace(Some(source_id));
-
-        dialog
+        
+        obj.set_modal(true);
+        obj
     }
 
-    pub fn refresh(&self, update: &UiUpdate) {
-        self.imp().update.replace(Some(update.clone()));
-        self.apply_update(update);
-    }
-
-    fn apply_update(&self, update: &UiUpdate) {
+    pub fn apply_update(&self, update: &UiUpdate) {
         let imp = self.imp();
-
-        let name = if update.name.is_empty() {
-            format!("Torrent {}", &update.info_hash[..8])
-        } else {
-            update.name.clone()
-        };
-        imp.name_lbl.set_label(&name);
-
+        
+        // State
         let state_text = match update.state {
             TorrentUiState::Downloading => "Downloading",
-            TorrentUiState::Paused => "Paused",
+            TorrentUiState::Paused => "Paused", 
             TorrentUiState::Completed => "Completed",
             TorrentUiState::Error => "Error",
         };
-        imp.state_lbl.set_label(state_text);
-
-        imp.size_lbl.set_label(&format!(
-            "{} / {}",
-            format_size(update.downloaded),
-            format_size(update.total)
-        ));
-
-        let fraction = if update.total > 0 {
+        imp.state_lbl.set_text(state_text);
+        
+        // Progress
+        let progress = if update.total > 0 {
             update.downloaded as f64 / update.total as f64
         } else {
             0.0
         };
-        imp.progress_bar.set_fraction(fraction);
-        imp.progress_bar.set_text(Some(&format!("{:.1}%", fraction * 100.0)));
-
-        imp.speed_down_lbl.set_label(&format!("{}/s", format_size(update.speed_down)));
-        imp.speed_up_lbl.set_label(&format!("{}/s", format_size(update.speed_up)));
-        imp.peers_lbl.set_label(&format!("{}", update.peers));
-
-        // Truncate long URIs
-        let source = if update.uri.len() > 60 {
-            format!("{}...", &update.uri[..57])
+        imp.progress_bar.set_fraction(progress);
+        imp.progress_bar.set_text(Some(&format!("{:.1}%", progress * 100.0)));
+        
+        // Size
+        let size_text = if update.total > 0 {
+            format!(
+                "{} of {}",
+                format_size(update.downloaded), 
+                format_size(update.total)
+            )
         } else {
-            update.uri.clone()
+            format_size(update.downloaded)
         };
-        imp.source_lbl.set_label(&source);
-        imp.source_lbl.set_tooltip_text(Some(&update.uri));
-
-        imp.save_path_lbl.set_label(&update.output_dir.to_string_lossy());
-    }
-
-    pub fn info_hash(&self) -> String {
-        self.imp().update.borrow().as_ref().map(|u| u.info_hash.clone()).unwrap_or_default()
+        imp.size_lbl.set_text(&size_text);
+        
+        // Speeds
+        imp.speed_down_lbl.set_text(&format!("{}/s", format_size(update.speed_down)));
+        imp.speed_up_lbl.set_text(&format!("{}/s", format_size(update.speed_up)));
+        
+        // Peers
+        imp.peers_lbl.set_text(&update.peers.to_string());
+        
+        // Source and save path
+        imp.source_lbl.set_text(&update.uri);
+        imp.save_path_lbl.set_text(&update.output_dir.to_string_lossy());
     }
 }
 
 fn format_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB"];
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    const THRESHOLD: f64 = 1024.0;
+    
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    
     let mut size = bytes as f64;
     let mut unit_index = 0;
-
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
+    
+    while size >= THRESHOLD && unit_index < UNITS.len() - 1 {
+        size /= THRESHOLD;
         unit_index += 1;
     }
-
+    
     if unit_index == 0 {
-        format!("{} B", bytes)
-    } else {
+        format!("{:.0} {}", size, UNITS[unit_index])
+    } else if size >= 100.0 {
+        format!("{:.0} {}", size, UNITS[unit_index]) 
+    } else if size >= 10.0 {
         format!("{:.1} {}", size, UNITS[unit_index])
+    } else {
+        format!("{:.2} {}", size, UNITS[unit_index])
     }
 }

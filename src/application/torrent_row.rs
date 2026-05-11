@@ -110,9 +110,8 @@ impl RillRow {
                     if let Some(root) = r.root() {
                         if let Ok(window) = root.downcast::<gtk::Window>() {
                             let dialog = RillInfoDialog::new(
-                                update,
                                 Rc::new(r.imp().latest_update.clone()),
-                                &window,
+                                &r.name(),
                             );
                             dialog.present();
                         }
