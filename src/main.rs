@@ -37,28 +37,33 @@ fn main() {
     let _guard = rt.enter();
 
     // mtorrent needs current_thread runtimes for PWP and storage (spawn_local).
-    // Each runtime must run on its own background thread.
-    let pwp_rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create PWP runtime");
-    let storage_rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create storage runtime");
+    // LocalRuntime (build_local) auto-provides LocalSet context for spawned tasks.
+    // Builders are Send, LocalRuntimes are !Send — build on the background thread.
+    let mut pwp_builder = tokio::runtime::Builder::new_current_thread();
+    pwp_builder.enable_all();
+    let (pwp_tx, pwp_rx) = tokio::sync::oneshot::channel();
 
-    let storage_handle = storage_rt.handle().clone();
-    let pwp_handle = pwp_rt.handle().clone();
+    let mut storage_builder = tokio::runtime::Builder::new_current_thread();
+    storage_builder.enable_all();
+    let (storage_tx, storage_rx) = tokio::sync::oneshot::channel();
 
-    // Keep runtimes alive on background threads until app exits
     std::thread::spawn(move || {
-        let local = tokio::task::LocalSet::new();
-        pwp_rt.block_on(local.run_until(std::future::pending::<()>()));
+        let rt = pwp_builder.build_local(Default::default())
+            .expect("Failed to create PWP runtime");
+        let handle = rt.handle().clone();
+        pwp_tx.send(handle).ok();
+        rt.block_on(std::future::pending::<()>());
     });
     std::thread::spawn(move || {
-        let local = tokio::task::LocalSet::new();
-        storage_rt.block_on(local.run_until(std::future::pending::<()>()));
+        let rt = storage_builder.build_local(Default::default())
+            .expect("Failed to create storage runtime");
+        let handle = rt.handle().clone();
+        storage_tx.send(handle).ok();
+        rt.block_on(std::future::pending::<()>());
     });
+
+    let pwp_handle = pwp_rx.blocking_recv().expect("PWP runtime failed");
+    let storage_handle = storage_rx.blocking_recv().expect("Storage runtime failed");
 
     let (_dht_worker, dht_cmds) = mt::app::dht::launch_dht_node_runtime(mt::app::dht::Config {
         local_port: 6881,
