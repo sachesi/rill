@@ -14,7 +14,14 @@ use crate::engine::TorrentEngine;
 use crate::application::RillApplication;
 
 fn main() {
-    pretty_env_logger::init();
+    // Initialize logging with filtering to reduce mtorrent noise
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .filter_module("mtorrent::app::dht", log::LevelFilter::Warn)
+        .filter_module("mtorrent::app::main", log::LevelFilter::Warn)
+        .filter_module("mtorrent_core::utp", log::LevelFilter::Error)
+        .filter_module("mtorrent_core::utp::udp", log::LevelFilter::Off)
+        .init();
+    
     gtk::init().expect("Failed to initialize GTK");
 
     // Register GResource
@@ -67,7 +74,7 @@ fn main() {
 
     let (_dht_worker, dht_cmds) = mt::app::dht::launch_dht_node_runtime(mt::app::dht::Config {
         local_port: 6881,
-        max_concurrent_queries: Some(0),
+            max_concurrent_queries: Some(10),
         config_dir: local_data_dir.clone(),
         use_upnp: true,
         bootstrap_nodes_override: None,
