@@ -9,36 +9,22 @@ use glib::clone;
 
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
 
-// ── CSS ──
 const APP_CSS: &str = "
-.bubble {
-    background-color: alpha(@accent_bg_color, 0.15);
-    color: @accent_color;
-    min-width: 36px;
-    min-height: 36px;
-    border-radius: 18px;
-    padding: 0;
-}
-.bubble.success {
-    background-color: alpha(@success_color, 0.15);
-    color: @success_color;
-}
-.bubble.error {
-    background-color: alpha(@error_color, 0.15);
-    color: @error_color;
-}
-.bubble.muted {
-    background-color: alpha(@window_fg_color, 0.10);
-    color: @window_fg_color;
-    opacity: 0.7;
-}
 progressbar.thin > trough,
 progressbar.thin > trough > progress {
     min-height: 4px;
-    border-radius: 2px;
 }
-.torrent-row {
-    padding: 12px;
+.torrent-icon.accent {
+    color: @accent_color;
+}
+.torrent-icon.success {
+    color: @success_color;
+}
+.torrent-icon.error {
+    color: @error_color;
+}
+.torrent-icon.dim {
+    opacity: 0.55;
 }
 ";
 
@@ -53,7 +39,6 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
         );
     }
 
-    // Channel: engine → UI
     let (tx, rx) = async_channel::unbounded();
     engine.borrow_mut().set_sender(tx);
 
@@ -80,11 +65,8 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
     header.pack_start(&add_btn);
     header.pack_end(&menu_btn);
 
-    // App actions
     let about = gio::SimpleAction::new("about", None);
-    about.connect_activate(|_, _| {
-        log::info!("Rill v0.1.0");
-    });
+    about.connect_activate(|_, _| { log::info!("Rill v0.1.0"); });
     app.add_action(&about);
 
     let app_q = app.clone();
@@ -102,66 +84,68 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
         .hexpand(true)
         .build();
 
-    // ── Torrent groups ──
-    let dl_group = adw::PreferencesGroup::builder()
-        .title("Downloading")
-        .visible(false)
-        .build();
+    // ── Content sections ──
+    let dl_header = section_label("Downloading");
+    dl_header.set_visible(false);
     let dl_list = make_listbox();
-    dl_group.add(&dl_list);
+    dl_list.set_visible(false);
 
-    let pause_group = adw::PreferencesGroup::builder()
-        .title("Paused")
-        .visible(false)
-        .build();
+    let pause_header = section_label("Paused");
+    pause_header.set_visible(false);
     let pause_list = make_listbox();
-    pause_group.add(&pause_list);
+    pause_list.set_visible(false);
 
-    let done_group = adw::PreferencesGroup::builder()
-        .title("Completed")
-        .visible(false)
-        .build();
+    let done_header = section_label("Completed");
+    done_header.set_visible(false);
     let done_list = make_listbox();
-    done_group.add(&done_list);
+    done_list.set_visible(false);
 
-    let prefs_page = adw::PreferencesPage::new();
-    prefs_page.add(&dl_group);
-    prefs_page.add(&pause_group);
-    prefs_page.add(&done_group);
+    let content_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(12)
+        .build();
+    content_box.append(&empty);
+    content_box.append(&dl_header);
+    content_box.append(&dl_list);
+    content_box.append(&pause_header);
+    content_box.append(&pause_list);
+    content_box.append(&done_header);
+    content_box.append(&done_list);
+
+    let clamp = adw::Clamp::builder()
+        .maximum_size(760)
+        .margin_top(24)
+        .margin_bottom(24)
+        .margin_start(16)
+        .margin_end(16)
+        .child(&content_box)
+        .build();
 
     let scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
-        .child(&prefs_page)
+        .child(&clamp)
         .build();
-
-    // Stack: empty ↔ torrents
-    let stack = gtk::Stack::builder()
-        .transition_type(gtk::StackTransitionType::Crossfade)
-        .build();
-    stack.add_named(&empty, Some("empty"));
-    stack.add_named(&scroll, Some("torrents"));
-    stack.set_visible_child_name("empty");
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&stack));
+    toolbar_view.set_content(Some(&scroll));
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Rill")
-        .default_width(540)
+        .default_width(560)
         .default_height(680)
         .content(&toolbar_view)
         .build();
 
-    // ── Shared state: info_hash → row ──
+    // ── Shared row map ──
     let rows: Rc<RefCell<HashMap<String, RillRow>>> = Rc::new(RefCell::new(HashMap::new()));
 
     // ── Add button ──
-    let eng_add = engine.clone();
     add_btn.connect_clicked(clone!(
         #[weak] window,
-        move |_| show_add_dialog(&window, eng_add.clone())
+        #[strong] engine,
+        move |_| show_add_dialog(&window, engine.clone())
     ));
 
     // ── Process engine updates ──
@@ -170,10 +154,10 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
         #[strong(rename_to = dl)] dl_list,
         #[strong(rename_to = pl)] pause_list,
         #[strong(rename_to = cl)] done_list,
-        #[strong(rename_to = dlg)] dl_group,
-        #[strong(rename_to = plg)] pause_group,
-        #[strong(rename_to = clg)] done_group,
-        #[strong] stack,
+        #[strong(rename_to = dlh)] dl_header,
+        #[strong(rename_to = ph)] pause_header,
+        #[strong(rename_to = ch)] done_header,
+        #[strong] empty,
         #[strong] engine,
         async move {
             while let Ok(event) = rx.recv().await {
@@ -190,10 +174,10 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
                         row.state.set(update.state.clone());
                         row.update(&update);
 
-                        let (target, target_grp) = match update.state {
-                            TorrentUiState::Downloading => (&dl, &dlg),
-                            TorrentUiState::Paused => (&pl, &plg),
-                            TorrentUiState::Completed | TorrentUiState::Error => (&cl, &clg),
+                        let (target, target_header) = match update.state {
+                            TorrentUiState::Downloading => (&dl, &dlh),
+                            TorrentUiState::Paused => (&pl, &ph),
+                            TorrentUiState::Completed | TorrentUiState::Error => (&cl, &ch),
                         };
 
                         let cur = row.container.parent()
@@ -202,12 +186,25 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
                             if let Some(lb) = cur { lb.remove(&row.container); }
                             target.append(&row.container);
                         }
-                        target_grp.set_visible(true);
-                        stack.set_visible_child_name("torrents");
+
+                        target.set_visible(true);
+                        target_header.set_visible(true);
+                        empty.set_visible(false);
                     }
                     UiEvent::Finished { info_hash, error } => {
                         if let Some(e) = error {
                             log::error!("Torrent {info_hash}: {e}");
+                        }
+                        // Check if any rows remain
+                        let map = rows.borrow();
+                        if map.is_empty() {
+                            empty.set_visible(true);
+                            dl_header.set_visible(false);
+                            dl.set_visible(false);
+                            pause_header.set_visible(false);
+                            pl.set_visible(false);
+                            done_header.set_visible(false);
+                            cl.set_visible(false);
                         }
                     }
                 }
@@ -216,6 +213,16 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
     ));
 
     window.present();
+}
+
+fn section_label(text: &str) -> gtk::Label {
+    gtk::Label::builder()
+        .label(text)
+        .xalign(0.0)
+        .css_classes(["title-4"])
+        .margin_start(6)
+        .margin_top(12)
+        .build()
 }
 
 fn make_listbox() -> gtk::ListBox {
@@ -235,26 +242,25 @@ struct RillRow {
     icon: gtk::Image,
     action_btn: gtk::Button,
     state: Rc<Cell<TorrentUiState>>,
-    info_hash: String,
-    uri: String,
-    output_dir: PathBuf,
 }
 
 impl RillRow {
     fn new(update: &UiUpdate, engine: &Rc<RefCell<TorrentEngine>>) -> Self {
-        // ── Bubble icon ──
         let icon = gtk::Image::builder()
             .icon_name("folder-download-symbolic")
-            .pixel_size(16)
+            .pixel_size(24)
+            .css_classes(["torrent-icon"])
+            .margin_top(4)
+            .margin_bottom(4)
             .build();
-        let icon_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .valign(gtk::Align::Center)
-            .css_classes(["bubble"])
-            .build();
-        icon_box.append(&icon);
 
-        // ── Info column ──
+        let icon_wrap = gtk::Box::builder()
+            .valign(gtk::Align::Start)
+            .halign(gtk::Align::Center)
+            .width_request(32)
+            .build();
+        icon_wrap.append(&icon);
+
         let name_lbl = gtk::Label::builder()
             .halign(gtk::Align::Start)
             .ellipsize(gtk::pango::EllipsizeMode::End)
@@ -278,7 +284,7 @@ impl RillRow {
 
         let info_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
-            .spacing(4)
+            .spacing(2)
             .hexpand(true)
             .valign(gtk::Align::Center)
             .build();
@@ -286,20 +292,21 @@ impl RillRow {
         info_box.append(&status_lbl);
         info_box.append(&progress);
 
-        // ── Action button ──
         let action_btn = gtk::Button::builder()
             .icon_name("media-playback-pause-symbolic")
             .valign(gtk::Align::Center)
             .css_classes(["circular", "flat"])
             .build();
 
-        // ── Layout ──
         let row_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(12)
-            .css_classes(["torrent-row"])
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(12)
+            .margin_end(12)
             .build();
-        row_box.append(&icon_box);
+        row_box.append(&icon_wrap);
         row_box.append(&info_box);
         row_box.append(&action_btn);
 
@@ -310,63 +317,61 @@ impl RillRow {
             .build();
 
         let initial_state = update.state.clone();
-        let shared_state: Rc<Cell<TorrentUiState>> = Rc::new(Cell::new(initial_state.clone()));
+        let shared_state: Rc<Cell<TorrentUiState>> = Rc::new(Cell::new(initial_state));
 
         // ── Right-click context menu ──
         let gesture = gtk::GestureClick::new();
         gesture.set_button(3);
-        let container_ctx = container.clone();
-        let action_btn_ctx = action_btn.clone();
-        let icon_ctx = icon.clone();
-        let state_ctx = Rc::clone(&shared_state);
-        let info_hash_ctx = update.info_hash.clone();
-        let uri_ctx = update.uri.clone();
-        let out_ctx = update.output_dir.clone();
-        let eng_ctx = engine.clone();
+        let c_eng = engine.clone();
+        let c_icon = icon.clone();
+        let c_btn = action_btn.clone();
+        let c_state = Rc::clone(&shared_state);
+        let c_hash = update.info_hash.clone();
+        let c_uri = update.uri.clone();
+        let c_out = update.output_dir.clone();
+        let c_container = container.clone();
         gesture.connect_pressed(move |g, _, x, y| {
             g.set_state(gtk::EventSequenceState::Claimed);
             show_context_menu(
-                &container_ctx, &action_btn_ctx, &icon_ctx,
-                state_ctx.get(),
-                eng_ctx.clone(),
-                &info_hash_ctx, &uri_ctx, &out_ctx,
+                &c_container, &c_btn, &c_icon,
+                c_state.get(), c_eng.clone(),
+                &c_hash, &c_uri, &c_out,
                 x, y,
             );
         });
         container.add_controller(gesture);
 
         // ── Action button click ──
-        let info_hash_btn = update.info_hash.clone();
-        let uri_btn = update.uri.clone();
-        let out_btn = update.output_dir.clone();
-        let eng_btn = engine.clone();
-        let icon_btn = icon.clone();
-        let act_btn = action_btn.clone();
-        let state_btn = Rc::clone(&shared_state);
-        let container_btn = container.clone();
+        let b_eng = engine.clone();
+        let b_icon = icon.clone();
+        let b_btn = action_btn.clone();
+        let b_state = Rc::clone(&shared_state);
+        let b_hash = update.info_hash.clone();
+        let b_uri = update.uri.clone();
+        let b_out = update.output_dir.clone();
+        let b_container = container.clone();
         action_btn.connect_clicked(move |_| {
-            match state_btn.get() {
+            match b_state.get() {
                 TorrentUiState::Downloading => {
-                    eng_btn.borrow().toggle(&info_hash_btn);
-                    state_btn.set(TorrentUiState::Paused);
-                    set_row_paused(&act_btn, &icon_btn);
+                    b_eng.borrow().toggle(&b_hash);
+                    b_state.set(TorrentUiState::Paused);
+                    apply_row_visual(&b_btn, &b_icon, TorrentUiState::Paused);
                 }
                 TorrentUiState::Paused => {
-                    eng_btn.borrow().start(uri_btn.clone(), out_btn.clone());
-                    state_btn.set(TorrentUiState::Downloading);
-                    set_row_downloading(&act_btn, &icon_btn);
+                    b_eng.borrow().start(b_uri.clone(), b_out.clone());
+                    b_state.set(TorrentUiState::Downloading);
+                    apply_row_visual(&b_btn, &b_icon, TorrentUiState::Downloading);
                 }
                 TorrentUiState::Completed | TorrentUiState::Error => {
-                    if let Some(p) = container_btn.parent() {
+                    if let Some(p) = b_container.parent() {
                         if let Ok(lb) = p.downcast::<gtk::ListBox>() {
-                            lb.remove(&container_btn);
+                            lb.remove(&b_container);
                         }
                     }
                 }
             }
         });
 
-        // Set initial visual state
         let row = Self {
             container,
             name_lbl,
@@ -375,9 +380,6 @@ impl RillRow {
             icon,
             action_btn,
             state: Rc::clone(&shared_state),
-            info_hash: update.info_hash.clone(),
-            uri: update.uri.clone(),
-            output_dir: update.output_dir.clone(),
         };
         row.update(update);
         row
@@ -387,15 +389,16 @@ impl RillRow {
         let name = if u.name.is_empty() { fallback_name(&u.uri) } else { u.name.clone() };
         self.name_lbl.set_label(&name);
 
+        self.progress.set_show_text(false);
         if u.total > 0 {
             self.progress.set_fraction(u.downloaded as f64 / u.total as f64);
-        } else {
+        } else if u.state == TorrentUiState::Downloading {
             self.progress.pulse();
         }
 
         let status = match u.state {
-            TorrentUiState::Completed => format!("Complete · {}", fmt_bytes(u.total)),
-            TorrentUiState::Paused => format!("Paused · {} of {}", fmt_bytes(u.downloaded), fmt_bytes(u.total)),
+            TorrentUiState::Completed => format!("{}", fmt_bytes(u.total)),
+            TorrentUiState::Paused => format!("{} of {} — Paused", fmt_bytes(u.downloaded), fmt_bytes(u.total)),
             TorrentUiState::Error => "Error".to_string(),
             TorrentUiState::Downloading => format!(
                 "{} of {} · {} peers · {}/s",
@@ -407,38 +410,33 @@ impl RillRow {
         };
         self.status_lbl.set_label(&status);
 
-        match u.state {
-            TorrentUiState::Downloading => {
-                set_row_downloading(&self.action_btn, &self.icon);
-            }
-            TorrentUiState::Paused => {
-                set_row_paused(&self.action_btn, &self.icon);
-            }
-            TorrentUiState::Completed => {
-                self.icon.set_icon_name(Some("emblem-ok-symbolic"));
-                self.icon.set_css_classes(&["bubble", "success"]);
-                self.action_btn.set_icon_name("user-trash-symbolic");
-                self.progress.set_fraction(1.0);
-            }
-            TorrentUiState::Error => {
-                self.icon.set_icon_name(Some("dialog-error-symbolic"));
-                self.icon.set_css_classes(&["bubble", "error"]);
-                self.action_btn.set_icon_name("user-trash-symbolic");
-            }
-        }
+        apply_row_visual(&self.action_btn, &self.icon, u.state);
     }
 }
 
-fn set_row_downloading(btn: &gtk::Button, icon: &gtk::Image) {
-    btn.set_icon_name("media-playback-pause-symbolic");
-    icon.set_icon_name(Some("folder-download-symbolic"));
-    icon.set_css_classes(&["bubble"]);
-}
-
-fn set_row_paused(btn: &gtk::Button, icon: &gtk::Image) {
-    btn.set_icon_name("media-playback-start-symbolic");
-    icon.set_icon_name(Some("media-playback-pause-symbolic"));
-    icon.set_css_classes(&["bubble", "muted"]);
+fn apply_row_visual(btn: &gtk::Button, icon: &gtk::Image, state: TorrentUiState) {
+    match state {
+        TorrentUiState::Downloading => {
+            btn.set_icon_name("media-playback-pause-symbolic");
+            icon.set_icon_name(Some("folder-download-symbolic"));
+            icon.set_css_classes(&["torrent-icon", "accent"]);
+        }
+        TorrentUiState::Paused => {
+            btn.set_icon_name("media-playback-start-symbolic");
+            icon.set_icon_name(Some("media-playback-pause-symbolic"));
+            icon.set_css_classes(&["torrent-icon", "dim"]);
+        }
+        TorrentUiState::Completed => {
+            btn.set_icon_name("user-trash-symbolic");
+            icon.set_icon_name(Some("emblem-ok-symbolic"));
+            icon.set_css_classes(&["torrent-icon", "success"]);
+        }
+        TorrentUiState::Error => {
+            btn.set_icon_name("user-trash-symbolic");
+            icon.set_icon_name(Some("dialog-error-symbolic"));
+            icon.set_css_classes(&["torrent-icon", "error"]);
+        }
+    }
 }
 
 // ── Context menu ──
@@ -472,42 +470,48 @@ fn show_context_menu(
 
     let group = gio::SimpleActionGroup::new();
 
-    let h_pause = info_hash.to_string();
-    let eng_pause = engine.clone();
-    let a_pause = action_btn.clone();
-    let i_pause = icon.clone();
-    let pause = gio::SimpleAction::new("pause", None);
-    pause.connect_activate(move |_, _| {
-        eng_pause.borrow().toggle(&h_pause);
-        set_row_paused(&a_pause, &i_pause);
-    });
+    // Pause
+    {
+        let h = info_hash.to_string();
+        let eng = engine.clone();
+        let a = action_btn.clone();
+        let i = icon.clone();
+        let pause = gio::SimpleAction::new("pause", None);
+        pause.connect_activate(move |_, _| {
+            eng.borrow().toggle(&h);
+            apply_row_visual(&a, &i, TorrentUiState::Paused);
+        });
+        group.add_action(&pause);
+    }
 
-    let u_resume = uri.to_string();
-    let o_resume = output_dir.clone();
-    let eng_resume = engine.clone();
-    let a_resume = action_btn.clone();
-    let i_resume = icon.clone();
-    let resume = gio::SimpleAction::new("resume", None);
-    resume.connect_activate(move |_, _| {
-        eng_resume.borrow().start(u_resume.clone(), o_resume.clone());
-        set_row_downloading(&a_resume, &i_resume);
-    });
+    // Resume
+    {
+        let u = uri.to_string();
+        let o = output_dir.clone();
+        let eng = engine.clone();
+        let a = action_btn.clone();
+        let i = icon.clone();
+        let resume = gio::SimpleAction::new("resume", None);
+        resume.connect_activate(move |_, _| {
+            eng.borrow().start(u.clone(), o.clone());
+            apply_row_visual(&a, &i, TorrentUiState::Downloading);
+        });
+        group.add_action(&resume);
+    }
 
-    let h_rm = info_hash.to_string();
-    let p_rm = parent.clone();
-    let eng_rm = engine.clone();
-    let remove = gio::SimpleAction::new("remove", None);
-    remove.connect_activate(move |_, _| {
-        eng_rm.borrow().toggle(&h_rm);
-        if let Some(p) = p_rm.parent() {
-            if let Ok(lb) = p.downcast::<gtk::ListBox>() { lb.remove(&p_rm); }
-        }
-    });
-
-    match state {
-        TorrentUiState::Downloading => { group.add_action(&pause); group.add_action(&remove); }
-        TorrentUiState::Paused => { group.add_action(&resume); group.add_action(&remove); }
-        TorrentUiState::Completed | TorrentUiState::Error => { group.add_action(&remove); }
+    // Remove
+    {
+        let h = info_hash.to_string();
+        let p = parent.clone();
+        let eng = engine.clone();
+        let remove = gio::SimpleAction::new("remove", None);
+        remove.connect_activate(move |_, _| {
+            eng.borrow().toggle(&h);
+            if let Some(pw) = p.parent() {
+                if let Ok(lb) = pw.downcast::<gtk::ListBox>() { lb.remove(&p); }
+            }
+        });
+        group.add_action(&remove);
     }
 
     parent.insert_action_group("ctx", Some(&group));
@@ -576,21 +580,20 @@ fn show_add_dialog(parent: &adw::ApplicationWindow, engine: Rc<RefCell<TorrentEn
     toolbar.set_content(Some(&body));
     dlg.set_content(Some(&toolbar));
 
-    // Wiring
     entry.connect_changed(clone!(#[weak] add_btn, move |e| {
         add_btn.set_sensitive(!e.text().trim().is_empty());
     }));
 
     cancel_btn.connect_clicked(clone!(#[weak] dlg, move |_| dlg.close()));
 
-    let eng_add = engine.clone();
     add_btn.connect_clicked(clone!(
         #[weak] dlg,
         #[weak] entry,
         #[strong] out_dir,
+        #[strong] engine,
         move |_| {
             let uri = entry.text().to_string();
-            eng_add.borrow().start(uri, out_dir.borrow().clone());
+            engine.borrow().start(uri, out_dir.borrow().clone());
             dlg.close();
         }
     ));
