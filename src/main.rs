@@ -35,8 +35,30 @@ fn main() {
     // mtorrent's DHT/engine functions spawn tasks via the current runtime's handle.
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
     let _guard = rt.enter();
-    let storage_handle = tokio::runtime::Handle::current();
-    let pwp_handle = tokio::runtime::Handle::current();
+
+    // mtorrent needs current_thread runtimes for PWP and storage (spawn_local).
+    // Each runtime must run on its own background thread.
+    let pwp_rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create PWP runtime");
+    let storage_rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create storage runtime");
+
+    let storage_handle = storage_rt.handle().clone();
+    let pwp_handle = pwp_rt.handle().clone();
+
+    // Keep runtimes alive on background threads until app exits
+    std::thread::spawn(move || {
+        let local = tokio::task::LocalSet::new();
+        pwp_rt.block_on(local);
+    });
+    std::thread::spawn(move || {
+        let local = tokio::task::LocalSet::new();
+        storage_rt.block_on(local);
+    });
 
     let (_dht_worker, dht_cmds) = mt::app::dht::launch_dht_node_runtime(mt::app::dht::Config {
         local_port: 6881,
