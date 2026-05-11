@@ -13,6 +13,7 @@ use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
 use crate::model::TorrentModel;
 use super::torrent_row::RillRow;
 use super::RillAddDialog;
+use super::RillInfoDialog;
 
 const APP_CSS: &str = "
 progressbar.thin > trough,
@@ -78,6 +79,7 @@ mod imp {
         pub model: RefCell<Option<Rc<RefCell<TorrentModel>>>>,
         pub tx: RefCell<Option<Sender<UiEvent>>>,
         pub rows: RefCell<HashMap<String, RillRow>>,
+        pub info_dialogs: RefCell<HashMap<String, Rc<RillInfoDialog>>>,
     }
 
     #[glib::object_subclass]
@@ -144,6 +146,7 @@ impl RillWindow {
         window.setup_key_controller();
         window.setup_search();
         window.setup_add_button();
+        window.setup_dnd();
         window.setup_breakpoints();
         window
     }
@@ -289,7 +292,55 @@ impl RillWindow {
 
     fn setup_breakpoints(&self) {
         // Clamp handles responsive width automatically.
-        // Margins defined in the template already work for most screen sizes.
+    }
+
+    fn setup_dnd(&self) {
+        use gtk::gdk;
+        use std::path::PathBuf;
+
+        let drop_target = gtk::DropTarget::default();
+        drop_target.set_actions(gdk::DragAction::COPY);
+        let window = self.downgrade();
+
+        drop_target.connect_drop(move |target, value, _x, _y| {
+            let window = match window.upgrade() {
+                Some(w) => w,
+                None => return false,
+            };
+            let engine = match window.imp().engine.borrow().as_ref().cloned() {
+                Some(e) => e,
+                None => return false,
+            };
+            let tx = match window.imp().tx.borrow().as_ref().cloned() {
+                Some(t) => t,
+                None => return false,
+            };
+
+            let uris: String = value.get().unwrap_or_default();
+            if let Some(path) = uris.lines().next() {
+                let path = path.trim();
+                let path = path.strip_prefix("file://").unwrap_or(path);
+                let path = PathBuf::from(path);
+                if let Some(ext) = path.extension() {
+                    if ext == "torrent" {
+                        let name = path.file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let dir = dirs_next::download_dir()
+                            .unwrap_or_else(|| PathBuf::from("."));
+                        glib::spawn_future_local(async move {
+                            engine.borrow_mut().start(
+                                name, path.to_string_lossy().to_string(), dir, tx,
+                            );
+                        });
+                        return true;
+                    }
+                }
+            }
+            false
+        });
+        self.add_controller(drop_target);
     }
 
     fn setup_add_button(&self) {

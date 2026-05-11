@@ -12,6 +12,7 @@ pub struct GtkListener {
     canceller: Weak<()>,
     tx: Sender<UiEvent>,
     info_hash: String,
+    name: String,
     uri: String,
     output_dir: PathBuf,
     last_downloaded: u64,
@@ -23,6 +24,7 @@ impl GtkListener {
         canceller: Weak<()>,
         tx: Sender<UiEvent>,
         info_hash: String,
+        name: String,
         uri: String,
         output_dir: PathBuf,
     ) -> Self {
@@ -30,6 +32,7 @@ impl GtkListener {
             canceller,
             tx,
             info_hash,
+            name,
             uri,
             output_dir,
             last_downloaded: 0,
@@ -45,7 +48,7 @@ impl StateListener for GtkListener {
         if self.canceller.strong_count() < 2 {
             let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
                 info_hash: self.info_hash.clone(),
-                name: String::new(),
+                name: self.name.clone(),
                 state: TorrentUiState::Paused,
                 downloaded: self.last_downloaded,
                 total: snapshot.bytes.total as u64,
@@ -85,7 +88,7 @@ impl StateListener for GtkListener {
 
         let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
             info_hash: self.info_hash.clone(),
-            name: String::new(),
+            name: self.name.clone(),
             state,
             downloaded,
             total,

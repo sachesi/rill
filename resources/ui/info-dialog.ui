@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="RillInfoDialog" parent="GtkWindow">
+    <property name="title">Torrent Info</property>
+    <property name="default-width">400</property>
+    <property name="default-height">480</property>
+    <property name="modal">true</property>
+    <child>
+      <object class="AdwToolbarView" id="toolbar_view">
+        <child type="top">
+          <object class="AdwHeaderBar" id="header_bar">
+            <child type="end">
+              <object class="GtkButton" id="close_btn">
+                <property name="label">Close</property>
+                <property name="css-classes">suggested-action</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkScrolledWindow" id="scroll">
+            <property name="hscrollbar-policy">never</property>
+            <child>
+              <object class="AdwClamp" id="clamp">
+                <property name="maximum-size">400</property>
+                <child>
+                  <object class="GtkBox" id="content_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">0</property>
+                    <property name="margin-top">24</property>
+                    <property name="margin-bottom">24</property>
+                    <property name="margin-start">16</property>
+                    <property name="margin-end">16</property>
+
+                    <child>
+                      <object class="AdwPreferencesGroup" id="info_group">
+                        <property name="title">Info</property>
+                        <child>
+                          <object class="AdwActionRow" id="name_row">
+                            <property name="title">Name</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="name_lbl">
+                                <property name="halign">end</property>
+                                <property name="css-classes">dim-label</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="state_row">
+                            <property name="title">Status</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="state_lbl">
+                                <property name="halign">end</property>
+                                <property name="css-classes">dim-label</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="size_row">
+                            <property name="title">Size</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="size_lbl">
+                                <property name="halign">end</property>
+                                <property name="css-classes">dim-label</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkProgressBar" id="progress_bar">
+                            <property name="hexpand">true</property>
+                            <property name="show-text">true</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="speed_down_row">
+                            <property name="title">Download Speed</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="speed_down_lbl">
+                                <property name="halign">end</property>
+                                <property name="css-classes">dim-label</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="speed_up_row">
+                            <property name="title">Upload Speed</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="speed_up_lbl">
+                                <property name="halign">end</property>
+                                <property name="css-classes">dim-label</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="peers_row">
+                            <property name="title">Peers</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="peers_lbl">
+                                <property name="halign">end</property>
+                                <property name="css-classes">dim-label</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="source_row">
+                            <property name="title">Source</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="source_lbl">
+                                <property name="halign">end</property>
+                                <property name="ellipsize">end</property>
+                                <property name="css-classes">dim-label</property>
+                                <property name="tooltip-text">Source URI</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="save_path_row">
+                            <property name="title">Save To</property>
+                            <child type="suffix">
+                              <object class="GtkLabel" id="save_path_lbl">
+                                <property name="halign">end</property>
+                                <property name="ellipsize">end</property>
+                                <property name="css-classes">dim-label</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </child>
+  </template>
+</interface>

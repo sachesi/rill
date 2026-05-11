@@ -34,30 +34,5 @@ pub fn show_preferences(parent: &adw::ApplicationWindow) {
     general_page.add(&download_group);
     prefs.add(&general_page);
 
-    // About page  
-    let about_page = adw::PreferencesPage::builder()
-        .title("About")
-        .icon_name("help-about-symbolic")
-        .build();
-
-    let about_group = adw::PreferencesGroup::builder()
-        .title("Rill")
-        .build();
-
-    let version_row = adw::ActionRow::builder()
-        .title("Version")
-        .subtitle("0.1.0")
-        .build();
-    about_group.add(&version_row);
-
-    let desc_row = adw::ActionRow::builder()
-        .title("Description")
-        .subtitle("Minimalistic BitTorrent client for GNOME")
-        .build();
-    about_group.add(&desc_row);
-
-    about_page.add(&about_group);
-    prefs.add(&about_page);
-
     prefs.present();
 }

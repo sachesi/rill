@@ -4,6 +4,7 @@
     <file compressed="true">ui/window.ui</file>
     <file compressed="true">ui/torrent-row.ui</file>
     <file compressed="true">ui/add-dialog.ui</file>
+    <file compressed="true">ui/info-dialog.ui</file>
     <file compressed="true">icons/com.github.sachesi.rill.svg</file>
   </gresource>
 </gresources>

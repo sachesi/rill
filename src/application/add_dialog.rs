@@ -88,13 +88,18 @@ mod imp {
 
             if let Some(url) = self.selected_url.borrow().as_ref() {
                 let url = url.clone();
+                let name = extract_name_from_uri(&url);
                 let dir = download_dir.clone().unwrap_or_else(|| PathBuf::from("."));
                 let engine_clone = engine.clone();
                 let tx_clone = tx.clone();
                 glib::spawn_future_local(async move {
-                    engine_clone.borrow_mut().start(url, dir, tx_clone);
+                    engine_clone.borrow_mut().start(name, url, dir, tx_clone);
                 });
             } else if let Some(file_path) = self.selected_file.borrow().as_ref() {
+                let name = file_path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("torrent")
+                    .to_string();
                 let dir = download_dir.unwrap_or_else(|| {
                     file_path.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
                 });
@@ -102,7 +107,7 @@ mod imp {
                 let tx_clone = tx.clone();
                 let path_str = file_path.to_string_lossy().to_string();
                 glib::spawn_future_local(async move {
-                    engine_clone.borrow_mut().start(path_str, dir, tx_clone);
+                    engine_clone.borrow_mut().start(name, path_str, dir, tx_clone);
                 });
             }
         }
@@ -250,4 +255,26 @@ impl RillAddDialog {
             );
         });
     }
+}
+
+fn extract_name_from_uri(uri: &str) -> String {
+    if uri.starts_with("magnet:") {
+        for pair in uri.split('&') {
+            if let Some(value) = pair.strip_prefix("dn=") {
+                if let Ok(decoded) = urlencoding::decode(value) {
+                    return decoded.into_owned();
+                }
+            }
+        }
+    }
+    if let Some(pos) = uri.rfind('/') {
+        let filename = &uri[pos + 1..];
+        if !filename.is_empty() {
+            if let Some(qm) = filename.find('?') {
+                return filename[..qm].to_string();
+            }
+            return filename.to_string();
+        }
+    }
+    uri.to_string()
 }

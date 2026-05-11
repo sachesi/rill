@@ -7,6 +7,7 @@ use gtk::subclass::prelude::*;
 
 use async_channel::Sender;
 
+use super::info_dialog::RillInfoDialog;
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
 
 mod imp {
@@ -30,6 +31,7 @@ mod imp {
         pub state: RefCell<TorrentUiState>,
         pub engine: RefCell<Option<Rc<RefCell<TorrentEngine>>>>,
         pub tx: RefCell<Option<Sender<UiEvent>>>,
+        pub latest_update: RefCell<Option<UiUpdate>>,
     }
 
     #[glib::object_subclass]
@@ -97,6 +99,29 @@ impl RillRow {
             }
         });
 
+        // Left-click → info dialog
+        let left_gesture = gtk::GestureClick::builder()
+            .button(1)
+            .build();
+        let row_weak2 = row.downgrade();
+        left_gesture.connect_pressed(move |_gesture, _n_press, _x, _y| {
+            if let Some(r) = row_weak2.upgrade() {
+                if let Some(update) = r.imp().latest_update.borrow().as_ref() {
+                    if let Some(root) = r.root() {
+                        if let Ok(window) = root.downcast::<gtk::Window>() {
+                            let dialog = RillInfoDialog::new(
+                                update,
+                                Rc::new(r.imp().latest_update.clone()),
+                                &window,
+                            );
+                            dialog.present();
+                        }
+                    }
+                }
+            }
+        });
+        row.add_controller(left_gesture);
+
         row
     }
 
@@ -130,6 +155,7 @@ impl RillRow {
 
     pub fn update(&self, update: &UiUpdate) {
         let imp = self.imp();
+        imp.latest_update.replace(Some(update.clone()));
 
         let name = if update.name.is_empty() {
             format!("Torrent {}", &update.info_hash[..8])

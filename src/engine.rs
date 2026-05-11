@@ -42,6 +42,7 @@ pub enum UiEvent {
 #[derive(Debug)]
 struct ActiveTorrent {
     canceller: Arc<()>,
+    name: String,
     uri: String,
     output_dir: PathBuf,
     ui_tx: Sender<UiEvent>,
@@ -49,6 +50,7 @@ struct ActiveTorrent {
 
 enum EngineCmd {
     Start {
+        name: String,
         uri: String,
         output_dir: PathBuf,
         canceller: Arc<()>,
@@ -94,7 +96,7 @@ impl TorrentEngine {
                 local.run_until(async {
                     while let Some(cmd) = cmd_rx.recv().await {
                         match cmd {
-                            EngineCmd::Start { uri, output_dir, canceller, ui_tx } => {
+                            EngineCmd::Start { name, uri, output_dir, canceller, ui_tx } => {
                                 let pid = peer_id_clone.clone();
                                 let cd = config_dir_clone.clone();
                                 let pwp = pwp_clone.clone();
@@ -107,6 +109,7 @@ impl TorrentEngine {
                                         Arc::downgrade(&canceller),
                                         ui_tx.clone(),
                                         info_hash.clone(),
+                                        name,
                                         uri.clone(),
                                         output_dir.clone(),
                                     );
@@ -125,12 +128,16 @@ impl TorrentEngine {
                                     };
 
                                     let result = app::main::single_torrent(&uri, listener, config, ctx).await;
-                                    let _ = ui_tx
-                                        .send(UiEvent::Finished {
-                                            info_hash,
-                                            error: result.err().map(|e| e.to_string()),
-                                        })
-                                        .await;
+                                    // If strong_count == 1, only background task holds the Arc
+                                    // → engine dropped its ref (user paused). Don't send Finished.
+                                    if Arc::strong_count(&canceller) > 1 {
+                                        let _ = ui_tx
+                                            .send(UiEvent::Finished {
+                                                info_hash,
+                                                error: result.err().map(|e| e.to_string()),
+                                            })
+                                            .await;
+                                    }
                                 });
                             }
                         }
@@ -149,7 +156,7 @@ impl TorrentEngine {
         }
     }
 
-    pub fn start(&self, uri: String, output_dir: PathBuf, ui_tx: Sender<UiEvent>) -> String {
+    pub fn start(&self, name: String, uri: String, output_dir: PathBuf, ui_tx: Sender<UiEvent>) -> String {
         let info_hash = hash_uri(&uri);
         let mut map = self.active.lock().unwrap();
 
@@ -160,6 +167,7 @@ impl TorrentEngine {
         let canceller = Arc::new(());
         map.insert(info_hash.clone(), ActiveTorrent {
             canceller: Arc::clone(&canceller),
+            name: name.clone(),
             uri: uri.clone(),
             output_dir: output_dir.clone(),
             ui_tx: ui_tx.clone(),
@@ -167,6 +175,7 @@ impl TorrentEngine {
         drop(map);
 
         let _ = self.cmd_tx.send(EngineCmd::Start {
+            name,
             uri,
             output_dir,
             canceller,
@@ -194,7 +203,9 @@ impl TorrentEngine {
             drop(saved_map);
             let canceller = Arc::new(());
             let ui_tx = torrent.ui_tx.clone();
+            let name = torrent.name.clone();
             let _ = self.cmd_tx.send(EngineCmd::Start {
+                name,
                 uri: torrent.uri.clone(),
                 output_dir: torrent.output_dir.clone(),
                 canceller: Arc::clone(&canceller),
@@ -203,6 +214,7 @@ impl TorrentEngine {
             let mut active_map2 = self.active.lock().unwrap();
             active_map2.insert(info_hash.to_string(), ActiveTorrent {
                 canceller,
+                name: torrent.name,
                 uri: torrent.uri,
                 output_dir: torrent.output_dir,
                 ui_tx,
