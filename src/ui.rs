@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Duration;
 
 use adw::prelude::*;
 use gtk::{gio, glib};
@@ -148,8 +149,16 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
         move |_| show_add_dialog(&window, engine.clone())
     ));
 
+    // ── Preferences action ──
+    let prefs_win = window.clone();
+    let prefs_action = gio::SimpleAction::new("preferences", None);
+    prefs_action.connect_activate(move |_, _| show_preferences(&prefs_win));
+    app.add_action(&prefs_action);
+    app.set_accels_for_action("app.preferences", &["<Control>comma"]);
+
     // ── Process engine updates ──
-    glib::spawn_future_local(clone!(
+    let rx_cell: Rc<RefCell<async_channel::Receiver<UiEvent>>> = Rc::new(RefCell::new(rx));
+    glib::timeout_add_local(Duration::from_millis(200), clone!(
         #[strong] rows,
         #[strong(rename_to = dl)] dl_list,
         #[strong(rename_to = pl)] pause_list,
@@ -159,8 +168,10 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
         #[strong(rename_to = ch)] done_header,
         #[strong] empty,
         #[strong] engine,
-        async move {
-            while let Ok(event) = rx.recv().await {
+        #[strong] rx_cell,
+        move || {
+            let rx = rx_cell.borrow();
+            while let Ok(event) = rx.try_recv() {
                 match event {
                     UiEvent::Update(update) => {
                         let mut map = rows.borrow_mut();
@@ -195,7 +206,6 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
                         if let Some(e) = error {
                             log::error!("Torrent {info_hash}: {e}");
                         }
-                        // Check if any rows remain
                         let map = rows.borrow();
                         if map.is_empty() {
                             empty.set_visible(true);
@@ -209,8 +219,12 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
                     }
                 }
             }
+            glib::ControlFlow::Continue
         }
     ));
+
+    // ── Preferences in menu ──
+    main_menu.insert(0, Some("_Preferences"), Some("app.preferences"));
 
     window.present();
 }
@@ -623,6 +637,91 @@ fn show_add_dialog(parent: &adw::ApplicationWindow, engine: Rc<RefCell<TorrentEn
     ));
 
     dlg.present();
+}
+
+// ── Preferences ──
+fn show_preferences(parent: &adw::ApplicationWindow) {
+    let win = adw::PreferencesWindow::builder()
+        .title("Rill Preferences")
+        .transient_for(parent)
+        .modal(true)
+        .build();
+
+    let general = adw::PreferencesPage::builder()
+        .title("General")
+        .icon_name("preferences-system-symbolic")
+        .build();
+
+    let dl_group = adw::PreferencesGroup::builder()
+        .title("Downloads")
+        .build();
+
+    let downloads = dirs_next::download_dir().unwrap_or_else(|| PathBuf::from("."));
+    let dir_row = adw::ActionRow::builder()
+        .title("Download Folder")
+        .subtitle(&downloads.display().to_string())
+        .activatable(true)
+        .build();
+    let pick_icon = gtk::Image::from_icon_name("folder-symbolic");
+    dir_row.add_suffix(&pick_icon);
+    dl_group.add(&dir_row);
+
+    let dir_row_c = dir_row.clone();
+    let win_c = win.clone();
+    dir_row.connect_activated(move |_| {
+        let fd = gtk::FileDialog::builder()
+            .title("Select Download Folder")
+            .accept_label("Select")
+            .build();
+        let row = dir_row_c.clone();
+        fd.select_folder(Some(&win_c), gio::Cancellable::NONE, move |r| {
+            if let Ok(f) = r {
+                if let Some(p) = f.path() {
+                    row.set_subtitle(&p.display().to_string());
+                }
+            }
+        });
+    });
+
+    general.add(&dl_group);
+
+    let about_page = adw::PreferencesPage::builder()
+        .title("About")
+        .icon_name("help-about-symbolic")
+        .build();
+
+    let about_group = adw::PreferencesGroup::new();
+    let app_name = gtk::Label::builder()
+        .label("Rill")
+        .css_classes(["title-1"])
+        .build();
+    let version = gtk::Label::builder()
+        .label("Version 0.1.0")
+        .css_classes(["dim-label"])
+        .build();
+    let desc = gtk::Label::builder()
+        .label("Minimalistic BitTorrent client for GNOME")
+        .css_classes(["dim-label"])
+        .max_width_chars(40)
+        .wrap(true)
+        .build();
+    let about_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .valign(gtk::Align::Center)
+        .halign(gtk::Align::Center)
+        .margin_top(24)
+        .margin_bottom(24)
+        .build();
+    about_box.append(&app_name);
+    about_box.append(&version);
+    about_box.append(&desc);
+    about_group.add(&about_box);
+    about_page.add(&about_group);
+
+    win.add(&general);
+    win.add(&about_page);
+    win.present();
 }
 
 // ── Helpers ──
