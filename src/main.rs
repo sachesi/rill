@@ -1,3 +1,4 @@
+mod application;
 mod engine;
 mod listener;
 mod model;
@@ -12,6 +13,7 @@ use mt::utils::re_exports::mtorrent_utils::{peer_id::PeerId, worker};
 use gtk::prelude::*;
 
 use crate::engine::TorrentEngine;
+use crate::application::RillApplication;
 
 const APP_ID: &str = "com.github.sachesi.rill";
 
@@ -65,6 +67,7 @@ fn main() {
         dht_cmds,
     )));
 
+    // For now, keep using the old approach until application structure is complete
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .build();
@@ -76,5 +79,5 @@ fn main() {
         }
     });
 
-    app.run();
+    std::process::exit(app.run().into());
 }
