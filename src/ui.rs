@@ -8,6 +8,7 @@ use adw::prelude::*;
 use gtk::{gio, glib};
 use glib::clone;
 
+use async_channel::Sender;
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
 
 const APP_CSS: &str = "
@@ -41,7 +42,6 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
     }
 
     let (tx, rx) = async_channel::unbounded();
-    engine.borrow_mut().set_sender(tx);
 
     // ── Header bar ──
     let title = adw::WindowTitle::new("Rill", "");
@@ -146,7 +146,8 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
     add_btn.connect_clicked(clone!(
         #[weak] window,
         #[strong] engine,
-        move |_| show_add_dialog(&window, engine.clone())
+        #[strong] tx,
+        move |_| show_add_dialog(&window, engine.clone(), tx.clone())
     ));
 
     // ── Preferences action ──
@@ -169,6 +170,7 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
         #[strong] empty,
         #[strong] engine,
         #[strong] rx_cell,
+        #[strong] tx,
         move || {
             let rx = rx_cell.borrow();
             while let Ok(event) = rx.try_recv() {
@@ -178,7 +180,7 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
                         let row = if let Some(r) = map.get(&update.info_hash) {
                             r.clone()
                         } else {
-                            let r = RillRow::new(&update, &engine);
+                            let r = RillRow::new(&update, &engine, tx.clone());
                             map.insert(update.info_hash.clone(), r.clone());
                             r
                         };
@@ -259,7 +261,7 @@ struct RillRow {
 }
 
 impl RillRow {
-    fn new(update: &UiUpdate, engine: &Rc<RefCell<TorrentEngine>>) -> Self {
+    fn new(update: &UiUpdate, engine: &Rc<RefCell<TorrentEngine>>, tx: Sender<UiEvent>) -> Self {
         let icon = gtk::Image::builder()
             .icon_name("folder-download-symbolic")
             .pixel_size(24)
@@ -344,12 +346,14 @@ impl RillRow {
         let c_uri = update.uri.clone();
         let c_out = update.output_dir.clone();
         let c_container = container.clone();
+        let c_tx = tx.clone();
         gesture.connect_pressed(move |g, _, x, y| {
             g.set_state(gtk::EventSequenceState::Claimed);
             show_context_menu(
                 &c_container, &c_btn, &c_icon,
                 c_state.get(), c_eng.clone(),
                 &c_hash, &c_uri, &c_out,
+                c_tx.clone(),
                 x, y,
             );
         });
@@ -364,6 +368,7 @@ impl RillRow {
         let b_uri = update.uri.clone();
         let b_out = update.output_dir.clone();
         let b_container = container.clone();
+        let b_tx = tx.clone();
         action_btn.connect_clicked(move |_| {
             match b_state.get() {
                 TorrentUiState::Downloading => {
@@ -372,7 +377,7 @@ impl RillRow {
                     apply_row_visual(&b_btn, &b_icon, TorrentUiState::Paused);
                 }
                 TorrentUiState::Paused => {
-                    b_eng.borrow().start(b_uri.clone(), b_out.clone());
+                    b_eng.borrow().start(b_uri.clone(), b_out.clone(), b_tx.clone());
                     b_state.set(TorrentUiState::Downloading);
                     apply_row_visual(&b_btn, &b_icon, TorrentUiState::Downloading);
                 }
@@ -463,6 +468,7 @@ fn show_context_menu(
     info_hash: &str,
     uri: &str,
     output_dir: &PathBuf,
+    tx: Sender<UiEvent>,
     x: f64,
     y: f64,
 ) {
@@ -505,9 +511,10 @@ fn show_context_menu(
         let eng = engine.clone();
         let a = action_btn.clone();
         let i = icon.clone();
+        let t = tx.clone();
         let resume = gio::SimpleAction::new("resume", None);
         resume.connect_activate(move |_, _| {
-            eng.borrow().start(u.clone(), o.clone());
+            eng.borrow().start(u.clone(), o.clone(), t.clone());
             apply_row_visual(&a, &i, TorrentUiState::Downloading);
         });
         group.add_action(&resume);
@@ -538,7 +545,7 @@ fn show_context_menu(
 }
 
 // ── Add dialog ──
-fn show_add_dialog(parent: &adw::ApplicationWindow, engine: Rc<RefCell<TorrentEngine>>) {
+fn show_add_dialog(parent: &adw::ApplicationWindow, engine: Rc<RefCell<TorrentEngine>>, tx: Sender<UiEvent>) {
     let dlg = adw::Window::builder()
         .title("Add Torrent")
         .default_width(440)
@@ -605,9 +612,10 @@ fn show_add_dialog(parent: &adw::ApplicationWindow, engine: Rc<RefCell<TorrentEn
         #[weak] entry,
         #[strong] out_dir,
         #[strong] engine,
+        #[strong] tx,
         move |_| {
             let uri = entry.text().to_string();
-            engine.borrow().start(uri, out_dir.borrow().clone());
+            engine.borrow().start(uri, out_dir.borrow().clone(), tx.clone());
             dlg.close();
         }
     ));

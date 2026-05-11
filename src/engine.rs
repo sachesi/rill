@@ -49,11 +49,11 @@ enum EngineCmd {
         uri: String,
         output_dir: PathBuf,
         canceller: Arc<()>,
+        ui_tx: Sender<UiEvent>,
     },
 }
 
 pub struct TorrentEngine {
-    tx: Sender<UiEvent>,
     active: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<EngineCmd>,
     peer_id: PeerId,
@@ -69,11 +69,9 @@ impl TorrentEngine {
         storage_handle: tokio::runtime::Handle,
         dht_sink: dht::CommandSink,
     ) -> Self {
-        let (tx, _rx) = async_channel::unbounded();
         let active: Arc<Mutex<HashMap<String, ActiveTorrent>>> = Arc::new(Mutex::new(HashMap::new()));
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<EngineCmd>();
 
-        let tx_clone = tx.clone();
         let config_dir_clone = config_dir.clone();
         let peer_id_clone = peer_id.clone();
         let pwp_clone = pwp_handle.clone();
@@ -90,8 +88,7 @@ impl TorrentEngine {
                 local.run_until(async {
                     while let Some(cmd) = cmd_rx.recv().await {
                         match cmd {
-                            EngineCmd::Start { uri, output_dir, canceller } => {
-                                let tx = tx_clone.clone();
+                            EngineCmd::Start { uri, output_dir, canceller, ui_tx } => {
                                 let pid = peer_id_clone.clone();
                                 let cd = config_dir_clone.clone();
                                 let pwp = pwp_clone.clone();
@@ -102,7 +99,7 @@ impl TorrentEngine {
                                 tokio::task::spawn_local(async move {
                                     let listener = GtkListener::new(
                                         Arc::downgrade(&canceller),
-                                        tx.clone(),
+                                        ui_tx.clone(),
                                         info_hash.clone(),
                                         uri.clone(),
                                         output_dir.clone(),
@@ -122,7 +119,7 @@ impl TorrentEngine {
                                     };
 
                                     let result = app::main::single_torrent(&uri, listener, config, ctx).await;
-                                    let _ = tx
+                                    let _ = ui_tx
                                         .send(UiEvent::Finished {
                                             info_hash,
                                             error: result.err().map(|e| e.to_string()),
@@ -137,7 +134,6 @@ impl TorrentEngine {
         });
 
         Self {
-            tx,
             active,
             cmd_tx,
             peer_id,
@@ -146,11 +142,7 @@ impl TorrentEngine {
         }
     }
 
-    pub fn set_sender(&mut self, tx: Sender<UiEvent>) {
-        self.tx = tx;
-    }
-
-    pub fn start(&self, uri: String, output_dir: PathBuf) -> String {
+    pub fn start(&self, uri: String, output_dir: PathBuf, ui_tx: Sender<UiEvent>) -> String {
         let info_hash = hash_uri(&uri);
         let mut map = self.active.lock().unwrap();
 
@@ -170,6 +162,7 @@ impl TorrentEngine {
             uri,
             output_dir,
             canceller,
+            ui_tx,
         });
         info_hash
     }
