@@ -151,6 +151,7 @@ impl RillWindow {
         window.setup_update_loop(rx);
         window.setup_key_controller();
         window.setup_search();
+        window.setup_breakpoints();
         window
     }
 
@@ -293,6 +294,11 @@ impl RillWindow {
         }
     }
 
+    fn setup_breakpoints(&self) {
+        // Clamp handles responsive width automatically.
+        // Margins defined in the template already work for most screen sizes.
+    }
+
     fn setup_update_loop(&self, rx: async_channel::Receiver<UiEvent>) {
         let window = self.downgrade();
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
@@ -303,11 +309,21 @@ impl RillWindow {
                             window.process_update(&update);
                         }
                         UiEvent::Finished { info_hash, error } => {
-                            // Handle torrent completion
-                            if let Some(err) = error {
-                                eprintln!("Torrent {} finished with error: {}", info_hash, err);
-                            } else {
-                                println!("Torrent {} completed successfully", info_hash);
+                            match error {
+                                Some(err) => {
+                                    eprintln!("Torrent {} finished with error: {}", info_hash, err);
+                        }
+                                None => {
+                                    let name = window.imp().rows.borrow()
+                                        .get(&info_hash)
+                                        .map(|r| r.name())
+                                        .unwrap_or_else(|| info_hash.clone());
+                                    let notification = gio::Notification::new("Download Complete");
+                                    notification.set_body(Some(&format!("{} has finished downloading", name)));
+                                    if let Some(app) = window.application() {
+                                        app.send_notification(None, &notification);
+                                    }
+                                }
                             }
                         }
                     }
