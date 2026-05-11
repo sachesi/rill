@@ -31,6 +31,10 @@ fn main() {
     let _ = std::fs::create_dir_all(&local_data_dir);
     log::info!("Data directory: {}", local_data_dir.display());
 
+    // Create a background tokio runtime and enter it so Handle::current() works.
+    // mtorrent's DHT/engine functions spawn tasks via the current runtime's handle.
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    let _guard = rt.enter();
     let storage_handle = tokio::runtime::Handle::current();
     let pwp_handle = tokio::runtime::Handle::current();
 
