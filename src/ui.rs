@@ -10,6 +10,7 @@ use glib::clone;
 
 use async_channel::Sender;
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
+use crate::model::{TorrentModel, TorrentObject};
 
 const APP_CSS: &str = "
 progressbar.thin > trough,
@@ -139,7 +140,8 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
         .content(&toolbar_view)
         .build();
 
-    // ── Shared row map ──
+    // ── Shared model and row tracking ──
+    let model = Rc::new(RefCell::new(TorrentModel::new()));
     let rows: Rc<RefCell<HashMap<String, RillRow>>> = Rc::new(RefCell::new(HashMap::new()));
 
     // ── Add button ──
@@ -160,6 +162,7 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
     // ── Process engine updates ──
     let rx_cell: Rc<RefCell<async_channel::Receiver<UiEvent>>> = Rc::new(RefCell::new(rx));
     glib::timeout_add_local(Duration::from_millis(200), clone!(
+        #[strong] model,
         #[strong] rows,
         #[strong(rename_to = dl)] dl_list,
         #[strong(rename_to = pl)] pause_list,
@@ -176,6 +179,10 @@ pub fn build_ui(app: &adw::Application, engine: Rc<RefCell<TorrentEngine>>) {
             while let Ok(event) = rx.try_recv() {
                 match event {
                     UiEvent::Update(update) => {
+                        // Update the model first
+                        model.borrow_mut().update_torrent(update.clone());
+                        
+                        // Update UI rows
                         let mut map = rows.borrow_mut();
                         let row = if let Some(r) = map.get(&update.info_hash) {
                             r.clone()

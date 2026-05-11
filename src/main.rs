@@ -1,5 +1,6 @@
 mod engine;
 mod listener;
+mod model;
 mod ui;
 
 use std::path::PathBuf;
