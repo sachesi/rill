@@ -16,6 +16,7 @@ mod imp {
     pub struct RillRow {
         pub icon: RefCell<Option<gtk::Image>>,
         pub icon_wrap: RefCell<Option<gtk::Box>>,
+        pub row_box: RefCell<Option<gtk::Box>>,
         pub name_lbl: RefCell<Option<gtk::Label>>,
         pub status_lbl: RefCell<Option<gtk::Label>>,
         pub progress: RefCell<Option<gtk::ProgressBar>>,
@@ -69,7 +70,7 @@ mod imp {
             info_box.append(&progress);
 
             let icon = gtk::Image::builder()
-                .icon_name("folder-download-symbolic")
+                .icon_name("go-down-symbolic")
                 .pixel_size(18)
                 .build();
 
@@ -98,6 +99,7 @@ mod imp {
 
             self.icon.replace(Some(icon));
             self.icon_wrap.replace(Some(icon_wrap));
+            self.row_box.replace(Some(row_box));
             self.name_lbl.replace(Some(name_lbl));
             self.status_lbl.replace(Some(status_lbl));
             self.progress.replace(Some(progress));
@@ -139,6 +141,10 @@ impl RillRow {
 
     fn icon_wrap(&self) -> gtk::Box {
         self.imp().icon_wrap.borrow().clone().unwrap()
+    }
+
+    fn row_box(&self) -> gtk::Box {
+        self.imp().row_box.borrow().clone().unwrap()
     }
 
     fn action_btn(&self) -> gtk::Button {
@@ -228,25 +234,36 @@ impl RillRow {
         *imp.state.borrow_mut() = state;
         match state {
             TorrentUiState::Downloading => {
-                self.icon().set_icon_name(Some("folder-download-symbolic"));
+                // Arrow-down icon in blue tinted circle
+                self.icon().set_icon_name(Some("go-down-symbolic"));
                 self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "accent"]);
+                // Neutral flat pause button
                 self.action_btn().set_icon_name("media-playback-pause-symbolic");
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Pause"));
+                // Full card at full opacity
+                self.row_box().set_opacity(1.0);
             }
             TorrentUiState::Paused => {
-                self.icon().set_icon_name(Some("folder-download-symbolic"));
+                // Pause icon in gray circle
+                self.icon().set_icon_name(Some("media-playback-pause-symbolic"));
                 self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "dim"]);
+                // Neutral flat resume button
                 self.action_btn().set_icon_name("media-playback-start-symbolic");
-                self.action_btn().set_css_classes(&["circular", "suggested-action"]);
+                self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Resume"));
+                // Dim entire card
+                self.row_box().set_opacity(0.5);
             }
             TorrentUiState::Completed => {
+                // Checkmark in green circle
                 self.icon().set_icon_name(Some("emblem-ok-symbolic"));
                 self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "success"]);
+                // Trash button (seeding finished)
                 self.action_btn().set_icon_name("user-trash-symbolic");
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
+                self.row_box().set_opacity(1.0);
             }
             TorrentUiState::Error => {
                 self.icon().set_icon_name(Some("dialog-error-symbolic"));
@@ -254,6 +271,7 @@ impl RillRow {
                 self.action_btn().set_icon_name("user-trash-symbolic");
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
+                self.row_box().set_opacity(1.0);
             }
         }
     }

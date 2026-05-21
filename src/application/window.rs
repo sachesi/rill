@@ -22,21 +22,19 @@ progressbar.thin > trough,
 progressbar.thin > trough > progress {
     min-height: 4px;
 }
-.torrent-icon.accent { color: @accent_color; }
-.torrent-icon.success { color: @success_color; }
-.torrent-icon.error { color: @error_color; }
-.torrent-icon.dim { opacity: 0.55; }
 
 .torrent-icon-avatar {
     border-radius: 8px;
     min-width: 40px;
     min-height: 40px;
     padding: 0;
+    -gtk-icon-size: 18px;
 }
-.torrent-icon-avatar.accent { background-color: alpha(@accent_color, 0.15); color: @accent_color; }
+.torrent-icon-avatar image { -gtk-icon-size: 18px; }
+.torrent-icon-avatar.accent { background-color: alpha(@accent_color, 0.18); color: @accent_color; }
 .torrent-icon-avatar.success { background-color: alpha(@success_color, 0.15); color: @success_color; }
 .torrent-icon-avatar.error { background-color: alpha(@error_color, 0.15); color: @error_color; }
-.torrent-icon-avatar.dim { background-color: alpha(@card_fg_color, 0.07); color: alpha(@card_fg_color, 0.45); }
+.torrent-icon-avatar.dim { background-color: alpha(@card_fg_color, 0.06); color: alpha(@card_fg_color, 0.40); }
 ";
 
 mod imp {
