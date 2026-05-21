@@ -15,6 +15,7 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct RillRow {
         pub icon: RefCell<Option<gtk::Image>>,
+        pub icon_wrap: RefCell<Option<gtk::Box>>,
         pub name_lbl: RefCell<Option<gtk::Label>>,
         pub status_lbl: RefCell<Option<gtk::Label>>,
         pub progress: RefCell<Option<gtk::ProgressBar>>,
@@ -69,29 +70,26 @@ mod imp {
 
             let icon = gtk::Image::builder()
                 .icon_name("folder-download-symbolic")
-                .pixel_size(24)
-                .css_classes(["torrent-icon"])
-                .margin_top(4)
-                .margin_bottom(4)
+                .pixel_size(18)
                 .build();
 
             let icon_wrap = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            icon_wrap.set_valign(gtk::Align::Start);
             icon_wrap.set_halign(gtk::Align::Center);
-            icon_wrap.set_width_request(32);
+            icon_wrap.set_valign(gtk::Align::Center);
+            icon_wrap.set_css_classes(&["torrent-icon-avatar", "accent"]);
             icon_wrap.append(&icon);
 
             let action_btn = gtk::Button::builder()
                 .icon_name("media-playback-pause-symbolic")
                 .valign(gtk::Align::Center)
-                .css_classes(["circular", "flat"])
+                .css_classes(["circular"])
                 .build();
 
             let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-            row_box.set_margin_top(12);
-            row_box.set_margin_bottom(12);
+            row_box.set_margin_top(10);
+            row_box.set_margin_bottom(10);
             row_box.set_margin_start(12);
-            row_box.set_margin_end(12);
+            row_box.set_margin_end(8);
             row_box.append(&icon_wrap);
             row_box.append(&info_box);
             row_box.append(&action_btn);
@@ -99,6 +97,7 @@ mod imp {
             self.obj().set_child(Some(&row_box));
 
             self.icon.replace(Some(icon));
+            self.icon_wrap.replace(Some(icon_wrap));
             self.name_lbl.replace(Some(name_lbl));
             self.status_lbl.replace(Some(status_lbl));
             self.progress.replace(Some(progress));
@@ -136,6 +135,10 @@ impl RillRow {
 
     fn icon(&self) -> gtk::Image {
         self.imp().icon.borrow().clone().unwrap()
+    }
+
+    fn icon_wrap(&self) -> gtk::Box {
+        self.imp().icon_wrap.borrow().clone().unwrap()
     }
 
     fn action_btn(&self) -> gtk::Button {
@@ -226,26 +229,30 @@ impl RillRow {
         match state {
             TorrentUiState::Downloading => {
                 self.icon().set_icon_name(Some("folder-download-symbolic"));
-                self.icon().set_css_classes(&["torrent-icon", "accent"]);
+                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "accent"]);
                 self.action_btn().set_icon_name("media-playback-pause-symbolic");
+                self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Pause"));
             }
             TorrentUiState::Paused => {
-                self.icon().set_icon_name(Some("media-playback-pause-symbolic"));
-                self.icon().set_css_classes(&["torrent-icon", "dim"]);
+                self.icon().set_icon_name(Some("folder-download-symbolic"));
+                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "dim"]);
                 self.action_btn().set_icon_name("media-playback-start-symbolic");
+                self.action_btn().set_css_classes(&["circular", "suggested-action"]);
                 self.action_btn().set_tooltip_text(Some("Resume"));
             }
             TorrentUiState::Completed => {
                 self.icon().set_icon_name(Some("emblem-ok-symbolic"));
-                self.icon().set_css_classes(&["torrent-icon", "success"]);
+                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "success"]);
                 self.action_btn().set_icon_name("user-trash-symbolic");
+                self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
             }
             TorrentUiState::Error => {
                 self.icon().set_icon_name(Some("dialog-error-symbolic"));
-                self.icon().set_css_classes(&["torrent-icon", "error"]);
+                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "error"]);
                 self.action_btn().set_icon_name("user-trash-symbolic");
+                self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
             }
         }
