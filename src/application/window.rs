@@ -24,13 +24,14 @@ progressbar.thin > trough > progress {
 }
 
 .torrent-icon-avatar {
-    border-radius: 8px;
+    border-radius: 9999px;
     min-width: 40px;
     min-height: 40px;
     padding: 0;
+}
+.torrent-icon-avatar image {
     -gtk-icon-size: 18px;
 }
-.torrent-icon-avatar image { -gtk-icon-size: 18px; }
 .torrent-icon-avatar.accent { background-color: alpha(@accent_color, 0.18); color: @accent_color; }
 .torrent-icon-avatar.success { background-color: alpha(@success_color, 0.15); color: @success_color; }
 .torrent-icon-avatar.error { background-color: alpha(@error_color, 0.15); color: @error_color; }

@@ -72,11 +72,14 @@ mod imp {
             let icon = gtk::Image::builder()
                 .icon_name("go-down-symbolic")
                 .pixel_size(18)
+                .halign(gtk::Align::Center)
+                .valign(gtk::Align::Center)
                 .build();
 
             let icon_wrap = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             icon_wrap.set_halign(gtk::Align::Center);
             icon_wrap.set_valign(gtk::Align::Center);
+            icon_wrap.set_size_request(40, 40);
             icon_wrap.set_css_classes(&["torrent-icon-avatar", "accent"]);
             icon_wrap.append(&icon);
 
