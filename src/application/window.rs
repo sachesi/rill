@@ -94,7 +94,7 @@ mod imp {
                 .build();
 
             let dl_list = gtk::ListBox::builder()
-                .selection_mode(gtk::SelectionMode::Single)
+                .selection_mode(gtk::SelectionMode::None)
                 .css_classes(["boxed-list"])
                 .visible(false)
                 .build();
@@ -109,7 +109,7 @@ mod imp {
                 .build();
 
             let pause_list = gtk::ListBox::builder()
-                .selection_mode(gtk::SelectionMode::Single)
+                .selection_mode(gtk::SelectionMode::None)
                 .css_classes(["boxed-list"])
                 .visible(false)
                 .build();
@@ -124,38 +124,35 @@ mod imp {
                 .build();
 
             let done_list = gtk::ListBox::builder()
-                .selection_mode(gtk::SelectionMode::Single)
+                .selection_mode(gtk::SelectionMode::None)
                 .css_classes(["boxed-list"])
                 .visible(false)
                 .build();
 
             let obj_weak1 = obj.downgrade();
-            dl_list.connect_row_activated(move |list, row| {
+            dl_list.connect_row_activated(move |_list, row| {
                 if let Some(window) = obj_weak1.upgrade()
                     && let Ok(rill_row) = row.clone().downcast::<RillRow>()
                 {
                     window.open_info_dialog(&rill_row);
-                    list.select_row(None::<&gtk::ListBoxRow>);
                 }
             });
 
             let obj_weak2 = obj.downgrade();
-            pause_list.connect_row_activated(move |list, row| {
+            pause_list.connect_row_activated(move |_list, row| {
                 if let Some(window) = obj_weak2.upgrade()
                     && let Ok(rill_row) = row.clone().downcast::<RillRow>()
                 {
                     window.open_info_dialog(&rill_row);
-                    list.select_row(None::<&gtk::ListBoxRow>);
                 }
             });
 
             let obj_weak3 = obj.downgrade();
-            done_list.connect_row_activated(move |list, row| {
+            done_list.connect_row_activated(move |_list, row| {
                 if let Some(window) = obj_weak3.upgrade()
                     && let Ok(rill_row) = row.clone().downcast::<RillRow>()
                 {
                     window.open_info_dialog(&rill_row);
-                    list.select_row(None::<&gtk::ListBoxRow>);
                 }
             });
 
