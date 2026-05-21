@@ -72,6 +72,8 @@ mod imp {
             let icon = gtk::Image::builder()
                 .icon_name("go-down-symbolic")
                 .pixel_size(18)
+                .hexpand(true)
+                .vexpand(true)
                 .halign(gtk::Align::Center)
                 .valign(gtk::Align::Center)
                 .build();
