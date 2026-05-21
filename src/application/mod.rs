@@ -5,7 +5,7 @@ mod preferences;
 mod torrent_row;
 mod info_dialog;
 
-pub use add_dialog::RillAddDialog;
+pub use add_dialog::{RillAddDialog, AddMode};
 pub use app::RillApplication;
 pub use window::RillWindow;
 pub use preferences::show_preferences;

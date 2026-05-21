@@ -10,6 +10,15 @@ use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 use crate::listener::GtkListener;
 
 #[derive(Clone, Debug)]
+pub struct PeerInfo {
+    pub address: String,
+    pub client: String,
+    pub speed_down: u64,
+    pub speed_up: u64,
+    pub encrypted: bool,
+}
+
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct UiUpdate {
     pub info_hash: String,
@@ -22,6 +31,9 @@ pub struct UiUpdate {
     pub speed_up: u64,
     pub output_dir: PathBuf,
     pub uri: String,
+    pub peers_list: Vec<PeerInfo>,
+    pub total_pieces: usize,
+    pub downloaded_pieces: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -41,7 +53,8 @@ pub enum UiEvent {
 #[allow(dead_code)]
 #[derive(Debug)]
 struct ActiveTorrent {
-    canceller: Arc<()>,
+    canceller: Option<Arc<()>>,
+    cancel_tx: Option<tokio::sync::oneshot::Sender<()>>,
     name: String,
     uri: String,
     output_dir: PathBuf,
@@ -54,6 +67,7 @@ enum EngineCmd {
         uri: String,
         output_dir: PathBuf,
         canceller: Arc<()>,
+        cancel_rx: tokio::sync::oneshot::Receiver<()>,
         ui_tx: Sender<UiEvent>,
     },
 }
@@ -63,8 +77,11 @@ pub struct TorrentEngine {
     active: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
     saved: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<EngineCmd>,
+    #[allow(dead_code)]
     peer_id: PeerId,
+    #[allow(dead_code)]
     config_dir: PathBuf,
+    #[allow(dead_code)]
     dht_sink: dht::CommandSink,
 }
 
@@ -76,12 +93,13 @@ impl TorrentEngine {
         storage_handle: tokio::runtime::Handle,
         dht_sink: dht::CommandSink,
     ) -> Self {
+        log::info!("Creating torrent engine, config_dir: {:?}", config_dir);
         let active: Arc<Mutex<HashMap<String, ActiveTorrent>>> = Arc::new(Mutex::new(HashMap::new()));
         let saved: Arc<Mutex<HashMap<String, ActiveTorrent>>> = Arc::new(Mutex::new(HashMap::new()));
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<EngineCmd>();
 
         let config_dir_clone = config_dir.clone();
-        let peer_id_clone = peer_id.clone();
+        let peer_id_clone = peer_id;
         let pwp_clone = pwp_handle.clone();
         let storage_clone = storage_handle.clone();
         let dht_clone = dht_sink.clone();
@@ -96,8 +114,8 @@ impl TorrentEngine {
                 local.run_until(async {
                     while let Some(cmd) = cmd_rx.recv().await {
                         match cmd {
-                            EngineCmd::Start { name, uri, output_dir, canceller, ui_tx } => {
-                                let pid = peer_id_clone.clone();
+                            EngineCmd::Start { name, uri, output_dir, canceller, cancel_rx, ui_tx } => {
+                                let pid = peer_id_clone;
                                 let cd = config_dir_clone.clone();
                                 let pwp = pwp_clone.clone();
                                 let stor = storage_clone.clone();
@@ -105,20 +123,27 @@ impl TorrentEngine {
                                 let info_hash = hash_uri(&uri);
 
                                 tokio::task::spawn_local(async move {
+                                    let downloaded_bytes = Arc::new(Mutex::new(0u64));
+                                    let total_bytes = Arc::new(Mutex::new(0u64));
+                                    let dl_clone = Arc::clone(&downloaded_bytes);
+                                    let tot_clone = Arc::clone(&total_bytes);
+
                                     let listener = GtkListener::new(
                                         Arc::downgrade(&canceller),
                                         ui_tx.clone(),
                                         info_hash.clone(),
-                                        name,
+                                        name.clone(),
                                         uri.clone(),
                                         output_dir.clone(),
+                                        downloaded_bytes,
+                                        total_bytes,
                                     );
                                     let config = app::main::Config {
                                         local_peer_id: pid,
-                                        output_dir,
+                                        output_dir: output_dir.clone(),
                                         config_dir: cd,
-                                        use_upnp: true,
-                                        pwp_port: None,
+                                        use_upnp: false,
+                                        pwp_port: find_available_port(),
                                         bind_interface: None,
                                     };
                                     let ctx = app::main::Context {
@@ -127,15 +152,47 @@ impl TorrentEngine {
                                         storage_runtime: stor,
                                     };
 
-                                    let result = app::main::single_torrent(&uri, listener, config, ctx).await;
-                                    // If strong_count == 1, only background task holds the Arc
-                                    // → engine dropped its ref (user paused). Don't send Finished.
-                                    if Arc::strong_count(&canceller) > 1 {
+                                    let mut rx = cancel_rx;
+                                    let result = tokio::select! {
+                                        res = app::main::single_torrent(&uri, listener, config, ctx) => Some(res),
+                                        _ = &mut rx => {
+                                            log::info!("Torrent task paused/cancelled: {}", info_hash);
+                                            None
+                                        }
+                                    };
+
+                                    if let Some(res) = result {
+                                        if Arc::strong_count(&canceller) > 1 {
+                                            match &res {
+                                                Ok(_) => log::info!("Torrent completed: {}", info_hash),
+                                                Err(e) => log::error!("Torrent failed: {}: {}", info_hash, e),
+                                            }
+                                            let _ = ui_tx
+                                                .send(UiEvent::Finished {
+                                                    info_hash,
+                                                    error: res.err().map(|e| e.to_string()),
+                                                })
+                                                .await;
+                                        }
+                                    } else {
+                                        let dl = *dl_clone.lock().unwrap();
+                                        let tot = *tot_clone.lock().unwrap();
                                         let _ = ui_tx
-                                            .send(UiEvent::Finished {
+                                            .send(UiEvent::Update(UiUpdate {
                                                 info_hash,
-                                                error: result.err().map(|e| e.to_string()),
-                                            })
+                                                name,
+                                                state: TorrentUiState::Paused,
+                                                downloaded: dl,
+                                                total: tot,
+                                                peers: 0,
+                                                speed_down: 0,
+                                                speed_up: 0,
+                                                output_dir,
+                                                uri,
+                                                peers_list: Vec::new(),
+                                                total_pieces: 0,
+                                                downloaded_pieces: 0,
+                                            }))
                                             .await;
                                     }
                                 });
@@ -161,12 +218,17 @@ impl TorrentEngine {
         let mut map = self.active.lock().unwrap();
 
         if map.contains_key(&info_hash) {
+            log::info!("Torrent already active: {} ({})", name, info_hash);
             return info_hash;
         }
 
+        log::info!("Starting torrent: {} ({})", name, info_hash);
+
         let canceller = Arc::new(());
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
         map.insert(info_hash.clone(), ActiveTorrent {
-            canceller: Arc::clone(&canceller),
+            canceller: Some(Arc::clone(&canceller)),
+            cancel_tx: Some(cancel_tx),
             name: name.clone(),
             uri: uri.clone(),
             output_dir: output_dir.clone(),
@@ -174,17 +236,100 @@ impl TorrentEngine {
         });
         drop(map);
 
+        // Immediately notify UI of the new downloading torrent
+        let _ = ui_tx.try_send(UiEvent::Update(UiUpdate {
+            info_hash: info_hash.clone(),
+            name: name.clone(),
+            state: TorrentUiState::Downloading,
+            downloaded: 0,
+            total: 0,
+            peers: 0,
+            speed_down: 0,
+            speed_up: 0,
+            output_dir: output_dir.clone(),
+            uri: uri.clone(),
+            peers_list: Vec::new(),
+            total_pieces: 0,
+            downloaded_pieces: 0,
+        }));
+
         let _ = self.cmd_tx.send(EngineCmd::Start {
             name,
             uri,
             output_dir,
             canceller,
+            cancel_rx,
             ui_tx,
         });
         info_hash
     }
 
+    pub fn add_paused(&self, name: String, uri: String, output_dir: PathBuf, ui_tx: Sender<UiEvent>) -> String {
+        let info_hash = hash_uri(&uri);
+        let mut map = self.saved.lock().unwrap();
+
+        if map.contains_key(&info_hash) {
+            log::info!("Torrent already saved/paused: {} ({})", name, info_hash);
+            return info_hash;
+        }
+
+        log::info!("Adding paused torrent: {} ({})", name, info_hash);
+
+        map.insert(info_hash.clone(), ActiveTorrent {
+            canceller: None,
+            cancel_tx: None,
+            name: name.clone(),
+            uri: uri.clone(),
+            output_dir: output_dir.clone(),
+            ui_tx: ui_tx.clone(),
+        });
+        drop(map);
+
+        // Immediately notify UI of the new paused torrent
+        let _ = ui_tx.try_send(UiEvent::Update(UiUpdate {
+            info_hash: info_hash.clone(),
+            name: name.clone(),
+            state: TorrentUiState::Paused,
+            downloaded: 0,
+            total: 0,
+            peers: 0,
+            speed_down: 0,
+            speed_up: 0,
+            output_dir: output_dir.clone(),
+            uri: uri.clone(),
+            peers_list: Vec::new(),
+            total_pieces: 0,
+            downloaded_pieces: 0,
+        }));
+
+        info_hash
+    }
+
+    pub fn add_paused_silent(&self, name: String, uri: String, output_dir: PathBuf, ui_tx: Sender<UiEvent>) -> String {
+        let info_hash = hash_uri(&uri);
+        let mut map = self.saved.lock().unwrap();
+
+        if map.contains_key(&info_hash) {
+            log::info!("Torrent already saved/paused: {} ({})", name, info_hash);
+            return info_hash;
+        }
+
+        log::info!("Adding paused torrent silently: {} ({})", name, info_hash);
+
+        map.insert(info_hash.clone(), ActiveTorrent {
+            canceller: None,
+            cancel_tx: None,
+            name,
+            uri,
+            output_dir,
+            ui_tx,
+        });
+
+        info_hash
+    }
+
     pub fn stop(&self, info_hash: &str) {
+        log::info!("Stopping torrent: {}", info_hash);
         self.active.lock().unwrap().remove(info_hash);
         self.saved.lock().unwrap().remove(info_hash);
     }
@@ -193,15 +338,19 @@ impl TorrentEngine {
         let mut active_map = self.active.lock().unwrap();
         let mut saved_map = self.saved.lock().unwrap();
         if active_map.contains_key(info_hash) {
-            // Pause: move from active to saved
-            if let Some(torrent) = active_map.remove(info_hash) {
+            log::info!("Pausing torrent: {}", info_hash);
+            if let Some(mut torrent) = active_map.remove(info_hash) {
+                torrent.canceller = None; // Drop the strong reference to trigger stop!
+                torrent.cancel_tx = None; // Drop the oneshot Sender to cancel immediately!
                 saved_map.insert(info_hash.to_string(), torrent);
             }
         } else if let Some(torrent) = saved_map.remove(info_hash) {
+            log::info!("Resuming torrent: {}", info_hash);
             // Resume: move from saved to active, restart download
             drop(active_map);
             drop(saved_map);
             let canceller = Arc::new(());
+            let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
             let ui_tx = torrent.ui_tx.clone();
             let name = torrent.name.clone();
             let _ = self.cmd_tx.send(EngineCmd::Start {
@@ -209,11 +358,13 @@ impl TorrentEngine {
                 uri: torrent.uri.clone(),
                 output_dir: torrent.output_dir.clone(),
                 canceller: Arc::clone(&canceller),
+                cancel_rx,
                 ui_tx: ui_tx.clone(),
             });
             let mut active_map2 = self.active.lock().unwrap();
             active_map2.insert(info_hash.to_string(), ActiveTorrent {
-                canceller,
+                canceller: Some(canceller),
+                cancel_tx: Some(cancel_tx),
                 name: torrent.name,
                 uri: torrent.uri,
                 output_dir: torrent.output_dir,
@@ -246,4 +397,11 @@ fn hash_uri(uri: &str) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     uri.hash(&mut hasher);
     format!("{:x}", hasher.finish())
+}
+
+fn find_available_port() -> Option<u16> {
+    std::net::TcpListener::bind("0.0.0.0:0")
+        .and_then(|l| l.local_addr())
+        .map(|addr| addr.port())
+        .ok()
 }

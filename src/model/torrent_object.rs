@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 
-use gtk::{glib, prelude::*};
+use gtk::glib;
 use glib::subclass::prelude::*;
 
 use crate::engine::TorrentUiState;
@@ -59,6 +59,7 @@ glib::wrapper! {
 }
 
 impl TorrentObject {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         info_hash: &str,
         name: &str,

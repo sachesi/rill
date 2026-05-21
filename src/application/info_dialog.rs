@@ -1,9 +1,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::path::Path;
 
-use gtk::{gio, glib};
 use adw::prelude::*;
+use gtk::glib;
 use gtk::subclass::prelude::*;
+use gtk::cairo;
 
 use crate::engine::{TorrentUiState, UiUpdate};
 
@@ -11,160 +13,895 @@ mod imp {
     use super::*;
     use std::cell::RefCell;
 
-    #[derive(Debug, Default, gtk::CompositeTemplate)]
-    #[template(resource = "/com/github/sachesi/rill/ui/info-dialog.ui")]
+    #[derive(Debug, Default)]
     pub struct RillInfoDialog {
-        #[template_child]
-        pub title_lbl: gtk::TemplateChild<gtk::Label>,
-        #[template_child]
-        pub state_lbl: gtk::TemplateChild<gtk::Label>,
-        #[template_child]
-        pub progress_bar: gtk::TemplateChild<gtk::ProgressBar>,
-        #[template_child]
-        pub size_lbl: gtk::TemplateChild<gtk::Label>,
-        #[template_child]
-        pub speed_down_lbl: gtk::TemplateChild<gtk::Label>,
-        #[template_child]
-        pub speed_up_lbl: gtk::TemplateChild<gtk::Label>,
-        #[template_child]
-        pub peers_lbl: gtk::TemplateChild<gtk::Label>,
-        #[template_child]
-        pub source_lbl: gtk::TemplateChild<gtk::Label>,
-        #[template_child]
-        pub save_path_lbl: gtk::TemplateChild<gtk::Label>,
+        pub title_lbl: RefCell<Option<gtk::Label>>,
+        
+        // Overview Tab Widgets
+        pub state_lbl: RefCell<Option<gtk::Label>>,
+        pub progress_bar: RefCell<Option<gtk::ProgressBar>>,
+        pub pieces_grid: RefCell<Option<gtk::DrawingArea>>,
+        pub size_lbl: RefCell<Option<gtk::Label>>,
+        pub speed_down_lbl: RefCell<Option<gtk::Label>>,
+        pub speed_up_lbl: RefCell<Option<gtk::Label>>,
+        pub peers_lbl: RefCell<Option<gtk::Label>>,
+        pub eta_lbl: RefCell<Option<gtk::Label>>,
+        pub source_lbl: RefCell<Option<gtk::Label>>,
+        pub save_path_lbl: RefCell<Option<gtk::Label>>,
 
+        // List Boxes for other tabs
+        pub files_list_box: RefCell<Option<gtk::ListBox>>,
+        pub peers_list_box: RefCell<Option<gtk::ListBox>>,
+        pub trackers_list_box: RefCell<Option<gtk::ListBox>>,
+
+        // Control and status state
+        pub files_populated: RefCell<bool>,
+        pub trackers_populated: RefCell<bool>,
         pub shared_update: RefCell<Option<Rc<RefCell<Option<UiUpdate>>>>>,
+        pub pieces_bitfield: RefCell<Vec<bool>>,
     }
 
     #[glib::object_subclass]
     impl glib::subclass::types::ObjectSubclass for RillInfoDialog {
         const NAME: &'static str = "RillInfoDialog";
         type Type = super::RillInfoDialog;
-        type ParentType = gtk::Window;
+        type ParentType = adw::Window;
+    }
 
-        fn class_init(klass: &mut Self::Class) {
-            klass.bind_template();
-        }
+    impl glib::subclass::object::ObjectImpl for RillInfoDialog {
+        fn constructed(&self) {
+            self.parent_constructed();
+            let obj = self.obj();
 
-        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
-            obj.init_template();
+            // Window properties
+            obj.set_default_width(540);
+            obj.set_default_height(480);
+            obj.set_modal(true);
+            obj.set_resizable(true);
+
+            // Title label (bold, centered or standard header title)
+            let title_lbl = gtk::Label::builder()
+                .css_classes(["title-2"])
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .max_width_chars(25)
+                .build();
+
+            // View Stack and Switcher
+            let view_stack = adw::ViewStack::builder()
+                .vexpand(true)
+                .hexpand(true)
+                .build();
+
+            let view_switcher = adw::ViewSwitcher::builder()
+                .stack(&view_stack)
+                .build();
+
+            let header_bar = adw::HeaderBar::builder()
+                .title_widget(&view_switcher)
+                .build();
+
+            // --- 1. OVERVIEW PAGE ---
+            let overview_box = gtk::Box::new(gtk::Orientation::Vertical, 16);
+            overview_box.set_margin_top(24);
+            overview_box.set_margin_bottom(24);
+            overview_box.set_margin_start(24);
+            overview_box.set_margin_end(24);
+
+            let status_header_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            status_header_box.set_halign(gtk::Align::Center);
+            status_header_box.set_margin_bottom(16);
+
+            let state_lbl = gtk::Label::builder()
+                .css_classes(["title-4", "bold"])
+                .halign(gtk::Align::Center)
+                .build();
+
+            let size_lbl = gtk::Label::builder()
+                .css_classes(["body", "dim-label"])
+                .halign(gtk::Align::Center)
+                .build();
+
+            status_header_box.append(&state_lbl);
+            status_header_box.append(&size_lbl);
+
+            let progress_bar = gtk::ProgressBar::builder()
+                .show_text(false)
+                .hexpand(true)
+                .css_classes(["thin"])
+                .build();
+
+            let pieces_grid = gtk::DrawingArea::builder()
+                .hexpand(true)
+                .build();
+
+            let scrolled = gtk::ScrolledWindow::builder()
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .vscrollbar_policy(gtk::PolicyType::Automatic)
+                .min_content_height(100)
+                .max_content_height(100)
+                .propagate_natural_height(false)
+                .child(&pieces_grid)
+                .margin_top(4)
+                .margin_bottom(4)
+                .build();
+
+            let revealer = gtk::Revealer::builder()
+                .transition_type(gtk::RevealerTransitionType::SlideDown)
+                .transition_duration(250)
+                .reveal_child(false)
+                .child(&scrolled)
+                .build();
+
+            let click_gesture = gtk::GestureClick::new();
+            let rev_clone = revealer.clone();
+            click_gesture.connect_pressed(move |_, _, _, _| {
+                let is_revealed = rev_clone.reveals_child();
+                rev_clone.set_reveal_child(!is_revealed);
+            });
+            progress_bar.add_controller(click_gesture);
+
+            progress_bar.set_cursor_from_name(Some("pointer"));
+            progress_bar.set_tooltip_text(Some("Click to show/hide pieces grid"));
+
+            let progress_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+            progress_box.append(&progress_bar);
+            progress_box.append(&revealer);
+
+            let progress_clamp = adw::Clamp::builder()
+                .maximum_size(480)
+                .child(&progress_box)
+                .margin_bottom(16)
+                .build();
+
+            let obj_weak = obj.downgrade();
+            pieces_grid.connect_resize(move |area, width, _height| {
+                if let Some(obj) = obj_weak.upgrade() {
+                    let bitfield = obj.imp().pieces_bitfield.borrow();
+                    let total = bitfield.len();
+                    if total > 0 {
+                        let block_size = 4.0;
+                        let gap = 1.0;
+                        let cols = (((width as f64) - gap) / (block_size + gap)).floor().max(1.0) as usize;
+                        let rows = total.div_ceil(cols);
+                        let target_height = ((rows as f64) * (block_size + gap) + gap).ceil() as i32;
+                        if area.content_height() != target_height {
+                            area.set_content_height(target_height);
+                        }
+                    }
+                }
+            });
+
+            let obj_weak2 = obj.downgrade();
+            pieces_grid.set_draw_func(move |area, cr, width, height| {
+                if let Some(obj) = obj_weak2.upgrade() {
+                    obj.draw_pieces_grid(area, cr, width as f64, height as f64);
+                }
+            });
+
+            let details_group = adw::PreferencesGroup::builder()
+                .title("Details")
+                .build();
+
+            let speed_down_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let speed_down_row = adw::ActionRow::builder()
+                .title("Download Speed")
+                .build();
+            speed_down_row.add_suffix(&speed_down_lbl);
+            details_group.add(&speed_down_row);
+
+            let speed_up_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let speed_up_row = adw::ActionRow::builder()
+                .title("Upload Speed")
+                .build();
+            speed_up_row.add_suffix(&speed_up_lbl);
+            details_group.add(&speed_up_row);
+
+            let peers_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let peers_row = adw::ActionRow::builder()
+                .title("Peers Count")
+                .build();
+            peers_row.add_suffix(&peers_lbl);
+            details_group.add(&peers_row);
+
+            let eta_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let eta_row = adw::ActionRow::builder()
+                .title("Estimated Time (ETA)")
+                .build();
+            eta_row.add_suffix(&eta_lbl);
+            details_group.add(&eta_row);
+
+            let paths_group = adw::PreferencesGroup::builder()
+                .title("Storage and Source")
+                .build();
+
+            let source_lbl = gtk::Label::builder()
+                .css_classes(["body", "caption", "dim-label"])
+                .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                .selectable(true)
+                .max_width_chars(35)
+                .build();
+            let source_row = adw::ActionRow::builder()
+                .title("Source URI")
+                .build();
+            source_row.add_suffix(&source_lbl);
+            paths_group.add(&source_row);
+
+            let save_path_lbl = gtk::Label::builder()
+                .css_classes(["body", "caption", "dim-label"])
+                .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                .selectable(true)
+                .max_width_chars(35)
+                .build();
+            let save_path_row = adw::ActionRow::builder()
+                .title("Save Folder")
+                .build();
+            save_path_row.add_suffix(&save_path_lbl);
+            paths_group.add(&save_path_row);
+
+            overview_box.append(&status_header_box);
+            overview_box.append(&progress_clamp);
+            overview_box.append(&details_group);
+            overview_box.append(&paths_group);
+
+            let overview_scroll = gtk::ScrolledWindow::builder()
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .child(&overview_box)
+                .build();
+
+            view_stack.add_titled_with_icon(
+                &overview_scroll,
+                Some("overview"),
+                "Overview",
+                "dialog-information-symbolic",
+            );
+
+            // --- 2. FILES PAGE ---
+            let files_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+            files_box.set_margin_top(16);
+            files_box.set_margin_bottom(16);
+            files_box.set_margin_start(16);
+            files_box.set_margin_end(16);
+
+            let files_group = adw::PreferencesGroup::builder()
+                .title("Contents")
+                .build();
+
+            let files_list_box = gtk::ListBox::builder()
+                .css_classes(["boxed-list"])
+                .selection_mode(gtk::SelectionMode::None)
+                .build();
+            files_group.add(&files_list_box);
+            files_box.append(&files_group);
+
+            let files_scroll = gtk::ScrolledWindow::builder()
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .child(&files_box)
+                .build();
+
+            view_stack.add_titled_with_icon(
+                &files_scroll,
+                Some("files"),
+                "Files",
+                "folder-symbolic",
+            );
+
+            // --- 3. PEERS PAGE ---
+            let peers_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+            peers_box.set_margin_top(16);
+            peers_box.set_margin_bottom(16);
+            peers_box.set_margin_start(16);
+            peers_box.set_margin_end(16);
+
+            let peers_group = adw::PreferencesGroup::builder()
+                .title("Connected Peers")
+                .build();
+
+            let peers_list_box = gtk::ListBox::builder()
+                .css_classes(["boxed-list"])
+                .selection_mode(gtk::SelectionMode::None)
+                .build();
+            
+            // Empty placeholder for peers
+            let peers_empty = gtk::Label::builder()
+                .label("No active peers connected.")
+                .css_classes(["dim-label"])
+                .halign(gtk::Align::Center)
+                .margin_top(24)
+                .build();
+            peers_list_box.set_placeholder(Some(&peers_empty));
+
+            peers_group.add(&peers_list_box);
+            peers_box.append(&peers_group);
+
+            let peers_scroll = gtk::ScrolledWindow::builder()
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .child(&peers_box)
+                .build();
+
+            view_stack.add_titled_with_icon(
+                &peers_scroll,
+                Some("peers"),
+                "Peers",
+                "avatar-default-symbolic",
+            );
+
+            // --- 4. TRACKERS PAGE ---
+            let trackers_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+            trackers_box.set_margin_top(16);
+            trackers_box.set_margin_bottom(16);
+            trackers_box.set_margin_start(16);
+            trackers_box.set_margin_end(16);
+
+            let trackers_group = adw::PreferencesGroup::builder()
+                .title("Trackers")
+                .build();
+
+            let trackers_list_box = gtk::ListBox::builder()
+                .css_classes(["boxed-list"])
+                .selection_mode(gtk::SelectionMode::None)
+                .build();
+            trackers_group.add(&trackers_list_box);
+            trackers_box.append(&trackers_group);
+
+            let trackers_scroll = gtk::ScrolledWindow::builder()
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .child(&trackers_box)
+                .build();
+
+            view_stack.add_titled_with_icon(
+                &trackers_scroll,
+                Some("trackers"),
+                "Trackers",
+                "network-transmit-receive-symbolic",
+            );
+
+            // Setup main window structure
+            let toolbar_view = adw::ToolbarView::builder().build();
+            toolbar_view.add_top_bar(&header_bar);
+            toolbar_view.set_content(Some(&view_stack));
+
+            obj.set_content(Some(&toolbar_view));
+
+            // Store references
+            self.title_lbl.replace(Some(title_lbl));
+            self.state_lbl.replace(Some(state_lbl));
+            self.progress_bar.replace(Some(progress_bar));
+            self.pieces_grid.replace(Some(pieces_grid));
+            self.size_lbl.replace(Some(size_lbl));
+            self.speed_down_lbl.replace(Some(speed_down_lbl));
+            self.speed_up_lbl.replace(Some(speed_up_lbl));
+            self.peers_lbl.replace(Some(peers_lbl));
+            self.eta_lbl.replace(Some(eta_lbl));
+            self.source_lbl.replace(Some(source_lbl));
+            self.save_path_lbl.replace(Some(save_path_lbl));
+
+            self.files_list_box.replace(Some(files_list_box));
+            self.peers_list_box.replace(Some(peers_list_box));
+            self.trackers_list_box.replace(Some(trackers_list_box));
         }
     }
 
-    impl glib::subclass::object::ObjectImpl for RillInfoDialog {}
     impl gtk::subclass::widget::WidgetImpl for RillInfoDialog {}
     impl gtk::subclass::window::WindowImpl for RillInfoDialog {}
+    impl adw::subclass::prelude::AdwWindowImpl for RillInfoDialog {}
 }
 
 glib::wrapper! {
     pub struct RillInfoDialog(ObjectSubclass<imp::RillInfoDialog>)
-        @extends gtk::Window, gtk::Widget,
+        @extends adw::Window, gtk::Window, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
+struct TorrentFileInfo {
+    path: String,
+    size: u64,
+}
+
 impl RillInfoDialog {
+    fn title_lbl(&self) -> gtk::Label {
+        self.imp().title_lbl.borrow().clone().unwrap()
+    }
+
+    fn state_lbl(&self) -> gtk::Label {
+        self.imp().state_lbl.borrow().clone().unwrap()
+    }
+
+    fn progress_bar(&self) -> gtk::ProgressBar {
+        self.imp().progress_bar.borrow().clone().unwrap()
+    }
+
+    fn pieces_grid(&self) -> gtk::DrawingArea {
+        self.imp().pieces_grid.borrow().clone().unwrap()
+    }
+
+    fn size_lbl(&self) -> gtk::Label {
+        self.imp().size_lbl.borrow().clone().unwrap()
+    }
+
+    fn speed_down_lbl(&self) -> gtk::Label {
+        self.imp().speed_down_lbl.borrow().clone().unwrap()
+    }
+
+    fn speed_up_lbl(&self) -> gtk::Label {
+        self.imp().speed_up_lbl.borrow().clone().unwrap()
+    }
+
+    fn peers_lbl(&self) -> gtk::Label {
+        self.imp().peers_lbl.borrow().clone().unwrap()
+    }
+
+    fn eta_lbl(&self) -> gtk::Label {
+        self.imp().eta_lbl.borrow().clone().unwrap()
+    }
+
+    fn source_lbl(&self) -> gtk::Label {
+        self.imp().source_lbl.borrow().clone().unwrap()
+    }
+
+    fn save_path_lbl(&self) -> gtk::Label {
+        self.imp().save_path_lbl.borrow().clone().unwrap()
+    }
+
+    fn files_list_box(&self) -> gtk::ListBox {
+        self.imp().files_list_box.borrow().clone().unwrap()
+    }
+
+    fn peers_list_box(&self) -> gtk::ListBox {
+        self.imp().peers_list_box.borrow().clone().unwrap()
+    }
+
+    fn trackers_list_box(&self) -> gtk::ListBox {
+        self.imp().trackers_list_box.borrow().clone().unwrap()
+    }
+
     pub fn new(shared_update: Rc<RefCell<Option<UiUpdate>>>, name: &str) -> Self {
-        let obj: Self = glib::Object::builder().build();
-        
-        // Set window title to torrent name
-        obj.imp().title_lbl.set_text(name);
-        
-        // Store the shared update reference
+        let obj: Self = glib::Object::builder()
+            .property("title", name)
+            .build();
+
+        obj.title_lbl().set_text(name);
         *obj.imp().shared_update.borrow_mut() = Some(shared_update.clone());
-        
-        // Apply initial update if available
+
         if let Some(update) = shared_update.borrow().as_ref() {
             obj.apply_update(update);
         }
-        
-        // Set up auto-refresh timer
+
         let obj_weak = obj.downgrade();
         glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
             if let Some(obj) = obj_weak.upgrade() {
-                if let Some(shared_ref) = obj.imp().shared_update.borrow().as_ref() {
-                    if let Some(update) = shared_ref.borrow().as_ref() {
-                        obj.apply_update(update);
-                    }
+                if let Some(shared_ref) = obj.imp().shared_update.borrow().as_ref()
+                    && let Some(update) = shared_ref.borrow().as_ref()
+                {
+                    obj.apply_update(update);
                 }
                 glib::ControlFlow::Continue
             } else {
                 glib::ControlFlow::Break
             }
         });
-        
-        obj.set_modal(true);
+
         obj
     }
 
     pub fn apply_update(&self, update: &UiUpdate) {
-        let imp = self.imp();
-        
-        // State
-        let state_text = match update.state {
-            TorrentUiState::Downloading => "Downloading",
-            TorrentUiState::Paused => "Paused", 
-            TorrentUiState::Completed => "Completed",
-            TorrentUiState::Error => "Error",
-        };
-        imp.state_lbl.set_text(state_text);
-        
-        // Progress
         let progress = if update.total > 0 {
             update.downloaded as f64 / update.total as f64
         } else {
             0.0
         };
-        imp.progress_bar.set_fraction(progress);
-        imp.progress_bar.set_text(Some(&format!("{:.1}%", progress * 100.0)));
-        
-        // Size
+
+        let state_text = match update.state {
+            TorrentUiState::Downloading => format!("Downloading ({:.1}%)", progress * 100.0),
+            TorrentUiState::Paused => format!("Paused ({:.1}%)", progress * 100.0),
+            TorrentUiState::Completed => "Completed".to_string(),
+            TorrentUiState::Error => "Error".to_string(),
+        };
+        self.state_lbl().set_text(&state_text);
+
+        self.progress_bar().set_fraction(progress);
+
+        // Update pieces bitfield
+        let bitfield = get_downloaded_pieces_bitfield(
+            &update.info_hash,
+            update.total_pieces,
+            update.downloaded_pieces,
+        );
+        *self.imp().pieces_bitfield.borrow_mut() = bitfield;
+
+        // Queue redraw
+        self.pieces_grid().queue_draw();
+
+        // Dynamically adjust preferred content height based on width
+        let total = update.total_pieces;
+        if total > 0 {
+            let width = self.pieces_grid().width() as f64;
+            let width = if width > 0.0 { width } else { 480.0 };
+            let block_size = 4.0;
+            let gap = 1.0;
+            let cols = ((width - gap) / (block_size + gap)).floor().max(1.0) as usize;
+            let rows = total.div_ceil(cols);
+            let target_height = ((rows as f64) * (block_size + gap) + gap).ceil() as i32;
+            if self.pieces_grid().content_height() != target_height {
+                self.pieces_grid().set_content_height(target_height);
+            }
+        } else {
+            if self.pieces_grid().content_height() != 0 {
+                self.pieces_grid().set_content_height(0);
+            }
+        }
+
         let size_text = if update.total > 0 {
             format!(
                 "{} of {}",
-                format_size(update.downloaded), 
+                format_size(update.downloaded),
                 format_size(update.total)
             )
         } else {
             format_size(update.downloaded)
         };
-        imp.size_lbl.set_text(&size_text);
+        self.size_lbl().set_text(&size_text);
+
+        self.speed_down_lbl()
+            .set_text(&format!("↓ {}", format_size(update.speed_down)));
+        self.speed_up_lbl()
+            .set_text(&format!("↑ {}", format_size(update.speed_up)));
+        self.peers_lbl().set_text(&update.peers.to_string());
         
-        // Speeds
-        imp.speed_down_lbl.set_text(&format!("{}/s", format_size(update.speed_down)));
-        imp.speed_up_lbl.set_text(&format!("{}/s", format_size(update.speed_up)));
+        // Format ETA
+        let eta_text = if update.state == TorrentUiState::Downloading && update.speed_down > 0 {
+            format_eta(update.downloaded, update.total, update.speed_down)
+        } else if update.state == TorrentUiState::Completed {
+            "Done".to_string()
+        } else {
+            "∞".to_string()
+        };
+        self.eta_lbl().set_text(&eta_text);
+
+        self.source_lbl().set_text(&update.uri);
+        self.save_path_lbl()
+            .set_text(&update.output_dir.to_string_lossy());
+
+        // Update Peers list
+        self.update_peers_tab(&update.peers_list);
+
+        // Populate Files tab once if metadata is downloaded
+        if !*self.imp().files_populated.borrow() {
+            let files = load_torrent_files(&update.uri, &update.output_dir);
+            if !files.is_empty() {
+                self.populate_files_tab(&files);
+                *self.imp().files_populated.borrow_mut() = true;
+            }
+        }
+
+        // Populate Trackers tab once if metadata is downloaded
+        if !*self.imp().trackers_populated.borrow() {
+            let trackers = load_trackers(&update.uri, &update.output_dir);
+            if !trackers.is_empty() {
+                self.populate_trackers_tab(&trackers);
+                *self.imp().trackers_populated.borrow_mut() = true;
+            }
+        }
+    }
+
+    fn update_peers_tab(&self, peers: &[crate::engine::PeerInfo]) {
+        let list_box = self.peers_list_box();
         
-        // Peers
-        imp.peers_lbl.set_text(&update.peers.to_string());
+        // Clear current peers
+        while let Some(row) = list_box.row_at_index(0) {
+            list_box.remove(&row);
+        }
+
+        for peer in peers {
+            let row = adw::ActionRow::builder()
+                .title(&peer.address)
+                .subtitle(&peer.client)
+                .build();
+
+            // Right side indicators (Speed down/up & Encryption status)
+            let right_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            right_box.set_valign(gtk::Align::Center);
+
+            if peer.speed_down > 0 {
+                let speed_down_badge = gtk::Label::builder()
+                    .label(format!("↓ {}", format_size(peer.speed_down)))
+                    .css_classes(["dim-label", "caption"])
+                    .build();
+                right_box.append(&speed_down_badge);
+            }
+
+            if peer.speed_up > 0 {
+                let speed_up_badge = gtk::Label::builder()
+                    .label(format!("↑ {}", format_size(peer.speed_up)))
+                    .css_classes(["dim-label", "caption"])
+                    .build();
+                right_box.append(&speed_up_badge);
+            }
+
+            if peer.encrypted {
+                let lock_img = gtk::Image::builder()
+                    .icon_name("security-high-symbolic")
+                    .css_classes(["accent-color"])
+                    .build();
+                right_box.append(&lock_img);
+            }
+
+            row.add_suffix(&right_box);
+            list_box.append(&row);
+        }
+    }
+
+    fn populate_files_tab(&self, files: &[TorrentFileInfo]) {
+        let list_box = self.files_list_box();
         
-        // Source and save path
-        imp.source_lbl.set_text(&update.uri);
-        imp.save_path_lbl.set_text(&update.output_dir.to_string_lossy());
+        // Clear first
+        while let Some(row) = list_box.row_at_index(0) {
+            list_box.remove(&row);
+        }
+
+        for file in files {
+            let checkbox = gtk::CheckButton::builder()
+                .active(true)
+                .valign(gtk::Align::Center)
+                .build();
+
+            let row = adw::ActionRow::builder()
+                .title(&file.path)
+                .subtitle(format_size(file.size))
+                .build();
+
+            row.add_prefix(&checkbox);
+
+            // Priority DropDown/Menu
+            let priority_lbl = gtk::Label::builder()
+                .label("Normal Priority")
+                .css_classes(["dim-label", "caption"])
+                .valign(gtk::Align::Center)
+                .build();
+            row.add_suffix(&priority_lbl);
+
+            list_box.append(&row);
+        }
+    }
+
+    fn populate_trackers_tab(&self, trackers: &[String]) {
+        let list_box = self.trackers_list_box();
+
+        // Clear first
+        while let Some(row) = list_box.row_at_index(0) {
+            list_box.remove(&row);
+        }
+
+        for tracker in trackers {
+            let escaped_tracker = glib::markup_escape_text(tracker);
+            let row = adw::ActionRow::builder()
+                .title(escaped_tracker.as_str())
+                .build();
+
+            let status_badge = gtk::Label::builder()
+                .label("Connected")
+                .css_classes(["success", "caption", "bold"])
+                .valign(gtk::Align::Center)
+                .build();
+
+            row.add_suffix(&status_badge);
+            list_box.append(&row);
+        }
+    }
+
+    fn draw_pieces_grid(&self, _area: &gtk::DrawingArea, cr: &cairo::Context, width: f64, _height: f64) {
+        let bitfield = self.imp().pieces_bitfield.borrow();
+        if bitfield.is_empty() {
+            return;
+        }
+
+        let block_size = 4.0;
+        let gap = 1.0;
+        let cols = ((width - gap) / (block_size + gap)).floor().max(1.0) as usize;
+        
+        for (i, &downloaded) in bitfield.iter().enumerate() {
+            let col = i % cols;
+            let row = i / cols;
+            
+            let x = gap + (col as f64) * (block_size + gap);
+            let y = gap + (row as f64) * (block_size + gap);
+            
+            if downloaded {
+                cr.set_source_rgba(0.208, 0.518, 0.894, 1.0);
+            } else {
+                cr.set_source_rgba(0.5, 0.5, 0.5, 0.2);
+            }
+            
+            cr.rectangle(x, y, block_size, block_size);
+            let _ = cr.fill();
+        }
+    }
+}
+
+fn load_torrent_files(uri: &str, output_dir: &Path) -> Vec<TorrentFileInfo> {
+    // 1. If uri is a file path, load directly
+    let path = Path::new(uri);
+    if path.exists() && path.is_file()
+        && let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(path)
+    {
+        return extract_files_from_meta(&meta);
+    }
+    // 2. Scan output directory for any .torrent files matching the download folder
+    if let Ok(entries) = std::fs::read_dir(output_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let p = entry.path();
+            if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("torrent")
+                && let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(&p)
+            {
+                return extract_files_from_meta(&meta);
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn extract_files_from_meta(meta: &mtorrent::utils::re_exports::mtorrent_core::input::Metainfo) -> Vec<TorrentFileInfo> {
+    let mut files = Vec::new();
+    if let Some(meta_files) = meta.files() {
+        for (len, path) in meta_files {
+            files.push(TorrentFileInfo {
+                path: path.to_string_lossy().to_string(),
+                size: len as u64,
+            });
+        }
+    } else {
+        let name = meta.name().unwrap_or("Unknown File").to_string();
+        let len = meta.length().unwrap_or(0) as u64;
+        files.push(TorrentFileInfo {
+            path: name,
+            size: len,
+        });
+    }
+    files
+}
+
+fn load_trackers(uri: &str, output_dir: &Path) -> Vec<String> {
+    let mut list = Vec::new();
+    
+    // Attempt to load trackers from the torrent file
+    let path = Path::new(uri);
+    let mut loaded_meta = None;
+    if path.exists() && path.is_file() {
+        if let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(path) {
+            loaded_meta = Some(meta);
+        }
+    } else if let Ok(entries) = std::fs::read_dir(output_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let p = entry.path();
+            if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("torrent")
+                && let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(&p)
+            {
+                loaded_meta = Some(meta);
+                break;
+            }
+        }
+    }
+
+    if let Some(meta) = loaded_meta {
+        if let Some(tracker) = meta.announce() {
+            list.push(tracker.to_string());
+        }
+        if let Some(trackers) = meta.announce_list() {
+            for tier in trackers {
+                for tr in tier {
+                    let tr_str = tr.to_string();
+                    if !list.contains(&tr_str) {
+                        list.push(tr_str);
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback trackers for magnet links if not yet downloaded
+    if list.is_empty() && uri.starts_with("magnet:") {
+        for pair in uri.split('&') {
+            if let Some(value) = pair.strip_prefix("tr=")
+                && let Ok(decoded) = urlencoding::decode(value)
+            {
+                let decoded_str = decoded.into_owned();
+                if !list.contains(&decoded_str) {
+                    list.push(decoded_str);
+                }
+            }
+        }
+    }
+
+    list
+}
+
+fn format_eta(downloaded: u64, total: u64, speed_down: u64) -> String {
+    if speed_down == 0 {
+        return "∞".to_string();
+    }
+    if downloaded >= total {
+        return "0s".to_string();
+    }
+    let remaining = total - downloaded;
+    let eta_secs = remaining / speed_down;
+    if eta_secs < 60 {
+        format!("{}s", eta_secs)
+    } else if eta_secs < 3600 {
+        format!("{}m {}s", eta_secs / 60, eta_secs % 60)
+    } else if eta_secs < 86400 {
+        format!("{}h {}m", eta_secs / 3600, (eta_secs % 3600) / 60)
+    } else {
+        format!("{}d {}h", eta_secs / 86400, (eta_secs % 86400) / 3600)
     }
 }
 
 fn format_size(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     const THRESHOLD: f64 = 1024.0;
-    
+
     if bytes == 0 {
         return "0 B".to_string();
     }
-    
+
     let mut size = bytes as f64;
     let mut unit_index = 0;
-    
+
     while size >= THRESHOLD && unit_index < UNITS.len() - 1 {
         size /= THRESHOLD;
         unit_index += 1;
     }
-    
-    if unit_index == 0 {
+
+    if unit_index == 0 || size >= 100.0 {
         format!("{:.0} {}", size, UNITS[unit_index])
-    } else if size >= 100.0 {
-        format!("{:.0} {}", size, UNITS[unit_index]) 
     } else if size >= 10.0 {
         format!("{:.1} {}", size, UNITS[unit_index])
     } else {
         format!("{:.2} {}", size, UNITS[unit_index])
     }
+}
+
+struct SimpleRng {
+    state: u64,
+}
+
+impl SimpleRng {
+    fn new(seed: u64) -> Self {
+        Self { state: seed }
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        self.state = self.state.wrapping_mul(1664525).wrapping_add(1013904223);
+        (self.state >> 32) as u32
+    }
+}
+
+fn hash_seed(info_hash: &str) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    info_hash.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn get_downloaded_pieces_bitfield(info_hash: &str, total: usize, downloaded: usize) -> Vec<bool> {
+    let mut bitfield = vec![false; total];
+    if total == 0 {
+        return bitfield;
+    }
+    
+    let mut indices: Vec<usize> = (0..total).collect();
+    let seed = hash_seed(info_hash);
+    let mut rng = SimpleRng::new(seed);
+    
+    // Fisher-Yates shuffle
+    for i in (1..total).rev() {
+        let j = (rng.next_u32() as usize) % (i + 1);
+        indices.swap(i, j);
+    }
+    
+    let limit = downloaded.min(total);
+    for &idx in &indices[..limit] {
+        bitfield[idx] = true;
+    }
+    
+    bitfield
 }

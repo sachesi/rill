@@ -130,16 +130,15 @@ impl TorrentModel {
     pub fn remove_torrent(&self, info_hash: &str) -> bool {
         let mut lookup = self.lookup.borrow_mut();
         
-        if let Some(torrent) = lookup.remove(info_hash) {
+        if let Some(_torrent) = lookup.remove(info_hash) {
             // Find and remove from the main store
             for i in 0..self.all_torrents.n_items() {
-                if let Some(item) = self.all_torrents.item(i) {
-                    if let Some(t) = item.downcast_ref::<TorrentObject>() {
-                        if t.info_hash() == info_hash {
-                            self.all_torrents.remove(i);
-                            return true;
-                        }
-                    }
+                if let Some(item) = self.all_torrents.item(i)
+                    && let Some(t) = item.downcast_ref::<TorrentObject>()
+                    && t.info_hash() == info_hash
+                {
+                    self.all_torrents.remove(i);
+                    return true;
                 }
             }
         }

@@ -1,7 +1,9 @@
 mod application;
 mod engine;
 mod listener;
+mod logging;
 mod model;
+mod storage;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -12,10 +14,11 @@ use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 
 use crate::engine::TorrentEngine;
 use crate::application::RillApplication;
+use crate::storage::Storage;
 
 fn main() {
-    // Initialize logging with filtering to reduce mtorrent noise
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+    // Initialize logging (trace max, filtered at runtime via set_max_level)
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
         .filter_module("mtorrent::app::dht", log::LevelFilter::Warn)
         .filter_module("mtorrent::app::main", log::LevelFilter::Warn)
         .filter_module("mtorrent_core::utp", log::LevelFilter::Error)
@@ -37,6 +40,26 @@ fn main() {
     let local_data_dir = local_data_dir.join("rill");
     let _ = std::fs::create_dir_all(&local_data_dir);
     log::info!("Data directory: {}", local_data_dir.display());
+
+    // Initialize storage
+    let db_path = local_data_dir.join("torrents.db");
+    let storage = match Storage::open(db_path.clone()) {
+        Ok(s) => {
+            log::info!("Database opened: {}", db_path.display());
+            s
+        }
+        Err(e) => {
+            log::error!("Failed to open database: {}", e);
+            log::warn!("Starting with empty session");
+            // If DB fails, create in-memory fallback would go here
+            // For now, just exit - we'll add graceful fallback in Phase 2.4
+            eprintln!("Fatal: Could not initialize database: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Apply runtime log settings from storage
+    logging::apply_settings(&storage.load_settings());
 
     // Create a background tokio runtime and enter it so Handle::current() works.
     // mtorrent's DHT/engine functions spawn tasks via the current runtime's handle.
@@ -76,7 +99,7 @@ fn main() {
         local_port: 6881,
             max_concurrent_queries: Some(10),
         config_dir: local_data_dir.clone(),
-        use_upnp: true,
+        use_upnp: false,
         bootstrap_nodes_override: None,
         bind_interface: None,
         query_timeout: None,
@@ -93,6 +116,13 @@ fn main() {
         dht_cmds,
     )));
 
-    let app = RillApplication::new(engine);
+    // Load saved torrents
+    let saved_torrents = storage.load_torrents().unwrap_or_else(|e| {
+        log::warn!("Failed to load torrents: {}", e);
+        Vec::new()
+    });
+    log::info!("Loaded {} saved torrents from database", saved_torrents.len());
+
+    let app = RillApplication::new(engine, storage, saved_torrents);
     std::process::exit(app.run().into());
 }

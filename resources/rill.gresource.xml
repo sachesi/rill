@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/com/github/sachesi/rill">
-    <file compressed="true">ui/window.ui</file>
-    <file compressed="true">ui/torrent-row.ui</file>
-    <file compressed="true">ui/add-dialog.ui</file>
-    <file compressed="true">ui/info-dialog.ui</file>
     <file compressed="true">icons/com.github.sachesi.rill.svg</file>
   </gresource>
 </gresources>
