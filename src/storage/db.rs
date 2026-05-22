@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::models::{AppSettings, SavedTorrent};
 
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 #[derive(Debug)]
 pub struct Database {
@@ -16,6 +16,11 @@ impl Database {
         let path_str = path.as_ref().to_string_lossy().to_string();
         log::info!("Opening database: {}", path_str);
         let conn = Connection::open(path.as_ref())?;
+        
+        // Enable WAL mode for better concurrency and performance
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        
         let db = Self { conn };
         db.initialize()?;
         Ok(db)
@@ -77,6 +82,11 @@ impl Database {
             self.conn.execute("ALTER TABLE torrents ADD COLUMN downloaded_pieces INTEGER NOT NULL DEFAULT 0", [])?;
             self.conn.execute("UPDATE schema_version SET version = 3", [])?;
         }
+        if from_version < 4 {
+            // Add sequential column to torrents table
+            self.conn.execute("ALTER TABLE torrents ADD COLUMN sequential INTEGER NOT NULL DEFAULT 0", [])?;
+            self.conn.execute("UPDATE schema_version SET version = 4", [])?;
+        }
         Ok(())
     }
 
@@ -95,7 +105,8 @@ impl Database {
                 completed_at INTEGER,
                 last_active INTEGER NOT NULL,
                 total_pieces INTEGER NOT NULL DEFAULT 0,
-                downloaded_pieces INTEGER NOT NULL DEFAULT 0
+                downloaded_pieces INTEGER NOT NULL DEFAULT 0,
+                sequential INTEGER NOT NULL DEFAULT 0
             )",
             [],
         )?;
@@ -130,8 +141,8 @@ impl Database {
         self.conn.execute(
             "INSERT OR REPLACE INTO torrents 
              (info_hash, name, uri, state, downloaded, total, output_dir, 
-              added_at, completed_at, last_active, total_pieces, downloaded_pieces)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+              added_at, completed_at, last_active, total_pieces, downloaded_pieces, sequential)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             rusqlite::params![
                 torrent.info_hash,
                 torrent.name,
@@ -145,6 +156,7 @@ impl Database {
                 torrent.last_active,
                 torrent.total_pieces as i64,
                 torrent.downloaded_pieces as i64,
+                torrent.sequential as i32,
             ],
         )?;
         Ok(())
@@ -156,7 +168,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT info_hash, name, uri, state, downloaded, total, 
                     output_dir, added_at, completed_at, last_active,
-                    total_pieces, downloaded_pieces
+                    total_pieces, downloaded_pieces, sequential
              FROM torrents
              ORDER BY last_active DESC",
         )?;
@@ -176,6 +188,7 @@ impl Database {
                     last_active: row.get(9)?,
                     total_pieces: row.get::<_, i64>(10)? as u64,
                     downloaded_pieces: row.get::<_, i64>(11)? as u64,
+                    sequential: row.get::<_, i32>(12)? != 0,
                 })
             })?
             .collect::<SqlResult<Vec<_>>>()?;
@@ -233,6 +246,26 @@ impl Database {
         self.conn.execute(
             "DELETE FROM torrents WHERE info_hash = ?1",
             [info_hash],
+        )?;
+        Ok(())
+    }
+
+    /// Update torrent sequential flag
+    pub fn update_torrent_sequential(&self, info_hash: &str, sequential: bool) -> SqlResult<()> {
+        log::debug!("Updating torrent sequential flag in DB: {} -> {}", info_hash, sequential);
+        self.conn.execute(
+            "UPDATE torrents SET sequential = ?1 WHERE info_hash = ?2",
+            rusqlite::params![sequential as i32, info_hash],
+        )?;
+        Ok(())
+    }
+
+    /// Pause all downloading torrents
+    pub fn pause_all_torrents(&self) -> SqlResult<()> {
+        log::info!("Pausing all downloading torrents in database");
+        self.conn.execute(
+            "UPDATE torrents SET state = 'paused' WHERE state = 'downloading'",
+            [],
         )?;
         Ok(())
     }

@@ -17,3 +17,8 @@ pub mod utp;
 
 /// Protocol Encryption implementation.
 pub mod pe;
+
+tokio::task_local! {
+    pub static SEQUENTIAL: std::sync::Arc<std::sync::atomic::AtomicBool>;
+}
+

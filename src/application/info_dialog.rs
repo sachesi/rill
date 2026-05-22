@@ -5,9 +5,8 @@ use std::path::Path;
 use adw::prelude::*;
 use gtk::glib;
 use gtk::subclass::prelude::*;
-use gtk::cairo;
 
-use crate::engine::{TorrentUiState, UiUpdate};
+use crate::engine::{TorrentEngine, TorrentUiState, UiUpdate};
 
 mod imp {
     use super::*;
@@ -20,7 +19,6 @@ mod imp {
         // Overview Tab Widgets
         pub state_lbl: RefCell<Option<gtk::Label>>,
         pub progress_bar: RefCell<Option<gtk::ProgressBar>>,
-        pub pieces_grid: RefCell<Option<gtk::DrawingArea>>,
         pub size_lbl: RefCell<Option<gtk::Label>>,
         pub speed_down_lbl: RefCell<Option<gtk::Label>>,
         pub speed_up_lbl: RefCell<Option<gtk::Label>>,
@@ -38,7 +36,13 @@ mod imp {
         pub files_populated: RefCell<bool>,
         pub trackers_populated: RefCell<bool>,
         pub shared_update: RefCell<Option<Rc<RefCell<Option<UiUpdate>>>>>,
-        pub pieces_bitfield: RefCell<Vec<bool>>,
+        pub updating_ui: RefCell<bool>,
+        pub last_sequential_toggle: RefCell<Option<std::time::Instant>>,
+
+        // Action widgets
+        pub engine: RefCell<Option<Rc<RefCell<TorrentEngine>>>>,
+        pub sequential_switch: RefCell<Option<adw::SwitchRow>>,
+        pub storage: RefCell<Option<crate::storage::Storage>>,
     }
 
     #[glib::object_subclass]
@@ -53,9 +57,9 @@ mod imp {
             self.parent_constructed();
             let obj = self.obj();
 
-            // Window properties
-            obj.set_default_width(540);
-            obj.set_default_height(480);
+            // Window properties (fallback; overridden by parent window in show_info_dialog)
+            obj.set_default_width(360);
+            obj.set_default_height(400);
             obj.set_modal(true);
             obj.set_resizable(true);
 
@@ -81,15 +85,15 @@ mod imp {
                 .build();
 
             // --- 1. OVERVIEW PAGE ---
-            let overview_box = gtk::Box::new(gtk::Orientation::Vertical, 16);
-            overview_box.set_margin_top(24);
-            overview_box.set_margin_bottom(24);
-            overview_box.set_margin_start(24);
-            overview_box.set_margin_end(24);
+            let overview_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
+            overview_box.set_margin_top(16);
+            overview_box.set_margin_bottom(16);
+            overview_box.set_margin_start(16);
+            overview_box.set_margin_end(16);
 
             let status_header_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
             status_header_box.set_halign(gtk::Align::Center);
-            status_header_box.set_margin_bottom(16);
+            status_header_box.set_margin_bottom(12);
 
             let state_lbl = gtk::Label::builder()
                 .css_classes(["title-4", "bold"])
@@ -110,73 +114,14 @@ mod imp {
                 .css_classes(["thin"])
                 .build();
 
-            let pieces_grid = gtk::DrawingArea::builder()
-                .hexpand(true)
-                .build();
-
-            let scrolled = gtk::ScrolledWindow::builder()
-                .hscrollbar_policy(gtk::PolicyType::Never)
-                .vscrollbar_policy(gtk::PolicyType::Automatic)
-                .min_content_height(100)
-                .max_content_height(100)
-                .propagate_natural_height(false)
-                .child(&pieces_grid)
-                .margin_top(4)
-                .margin_bottom(4)
-                .build();
-
-            let revealer = gtk::Revealer::builder()
-                .transition_type(gtk::RevealerTransitionType::SlideDown)
-                .transition_duration(250)
-                .reveal_child(false)
-                .child(&scrolled)
-                .build();
-
-            let click_gesture = gtk::GestureClick::new();
-            let rev_clone = revealer.clone();
-            click_gesture.connect_pressed(move |_, _, _, _| {
-                let is_revealed = rev_clone.reveals_child();
-                rev_clone.set_reveal_child(!is_revealed);
-            });
-            progress_bar.add_controller(click_gesture);
-
-            progress_bar.set_cursor_from_name(Some("pointer"));
-            progress_bar.set_tooltip_text(Some("Click to show/hide pieces grid"));
-
-            let progress_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+            let progress_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
             progress_box.append(&progress_bar);
-            progress_box.append(&revealer);
 
             let progress_clamp = adw::Clamp::builder()
-                .maximum_size(480)
+                .maximum_size(288)
                 .child(&progress_box)
-                .margin_bottom(16)
+                .margin_bottom(12)
                 .build();
-
-            let obj_weak = obj.downgrade();
-            pieces_grid.connect_resize(move |area, width, _height| {
-                if let Some(obj) = obj_weak.upgrade() {
-                    let bitfield = obj.imp().pieces_bitfield.borrow();
-                    let total = bitfield.len();
-                    if total > 0 {
-                        let block_size = 4.0;
-                        let gap = 1.0;
-                        let cols = (((width as f64) - gap) / (block_size + gap)).floor().max(1.0) as usize;
-                        let rows = total.div_ceil(cols);
-                        let target_height = ((rows as f64) * (block_size + gap) + gap).ceil() as i32;
-                        if area.content_height() != target_height {
-                            area.set_content_height(target_height);
-                        }
-                    }
-                }
-            });
-
-            let obj_weak2 = obj.downgrade();
-            pieces_grid.set_draw_func(move |area, cr, width, height| {
-                if let Some(obj) = obj_weak2.upgrade() {
-                    obj.draw_pieces_grid(area, cr, width as f64, height as f64);
-                }
-            });
 
             let details_group = adw::PreferencesGroup::builder()
                 .title("Details")
@@ -238,9 +183,43 @@ mod imp {
             save_path_row.add_suffix(&save_path_lbl);
             paths_group.add(&save_path_row);
 
+            let sequential_switch = adw::SwitchRow::builder()
+                .title("Download from start to finish (sequential)")
+                .active(false)
+                .build();
+
+            let obj_weak_seq = obj.downgrade();
+            sequential_switch.connect_active_notify(move |sw| {
+                if let Some(obj) = obj_weak_seq.upgrade() {
+                    if *obj.imp().updating_ui.borrow() {
+                        return;
+                    }
+                    obj.imp().last_sequential_toggle.replace(Some(std::time::Instant::now()));
+                    let is_active = sw.is_active();
+                    let info_hash_opt = obj.imp().shared_update.borrow().as_ref()
+                        .and_then(|shared| shared.borrow().as_ref().map(|upd| upd.info_hash.clone()));
+                    if let Some(info_hash) = info_hash_opt {
+                        if let Some(engine) = obj.imp().engine.borrow().as_ref() {
+                            engine.borrow().set_sequential(&info_hash, is_active);
+                        }
+                        if let Some(storage) = obj.imp().storage.borrow().as_ref()
+                            && let Err(e) = storage.update_torrent_sequential(&info_hash, is_active)
+                        {
+                            log::warn!("Failed to update sequential flag in DB: {}", e);
+                        }
+                    }
+                }
+            });
+
+            let options_group = adw::PreferencesGroup::builder()
+                .title("Options")
+                .build();
+            options_group.add(&sequential_switch);
+
             overview_box.append(&status_header_box);
             overview_box.append(&progress_clamp);
             overview_box.append(&details_group);
+            overview_box.append(&options_group);
             overview_box.append(&paths_group);
 
             let overview_scroll = gtk::ScrolledWindow::builder()
@@ -257,10 +236,10 @@ mod imp {
 
             // --- 2. FILES PAGE ---
             let files_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-            files_box.set_margin_top(16);
-            files_box.set_margin_bottom(16);
-            files_box.set_margin_start(16);
-            files_box.set_margin_end(16);
+            files_box.set_margin_top(12);
+            files_box.set_margin_bottom(12);
+            files_box.set_margin_start(12);
+            files_box.set_margin_end(12);
 
             let files_group = adw::PreferencesGroup::builder()
                 .title("Contents")
@@ -287,10 +266,10 @@ mod imp {
 
             // --- 3. PEERS PAGE ---
             let peers_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-            peers_box.set_margin_top(16);
-            peers_box.set_margin_bottom(16);
-            peers_box.set_margin_start(16);
-            peers_box.set_margin_end(16);
+            peers_box.set_margin_top(12);
+            peers_box.set_margin_bottom(12);
+            peers_box.set_margin_start(12);
+            peers_box.set_margin_end(12);
 
             let peers_group = adw::PreferencesGroup::builder()
                 .title("Connected Peers")
@@ -327,10 +306,10 @@ mod imp {
 
             // --- 4. TRACKERS PAGE ---
             let trackers_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-            trackers_box.set_margin_top(16);
-            trackers_box.set_margin_bottom(16);
-            trackers_box.set_margin_start(16);
-            trackers_box.set_margin_end(16);
+            trackers_box.set_margin_top(12);
+            trackers_box.set_margin_bottom(12);
+            trackers_box.set_margin_start(12);
+            trackers_box.set_margin_end(12);
 
             let trackers_group = adw::PreferencesGroup::builder()
                 .title("Trackers")
@@ -366,7 +345,6 @@ mod imp {
             self.title_lbl.replace(Some(title_lbl));
             self.state_lbl.replace(Some(state_lbl));
             self.progress_bar.replace(Some(progress_bar));
-            self.pieces_grid.replace(Some(pieces_grid));
             self.size_lbl.replace(Some(size_lbl));
             self.speed_down_lbl.replace(Some(speed_down_lbl));
             self.speed_up_lbl.replace(Some(speed_up_lbl));
@@ -378,6 +356,7 @@ mod imp {
             self.files_list_box.replace(Some(files_list_box));
             self.peers_list_box.replace(Some(peers_list_box));
             self.trackers_list_box.replace(Some(trackers_list_box));
+            self.sequential_switch.replace(Some(sequential_switch));
         }
     }
 
@@ -408,10 +387,6 @@ impl RillInfoDialog {
 
     fn progress_bar(&self) -> gtk::ProgressBar {
         self.imp().progress_bar.borrow().clone().unwrap()
-    }
-
-    fn pieces_grid(&self) -> gtk::DrawingArea {
-        self.imp().pieces_grid.borrow().clone().unwrap()
     }
 
     fn size_lbl(&self) -> gtk::Label {
@@ -454,6 +429,18 @@ impl RillInfoDialog {
         self.imp().trackers_list_box.borrow().clone().unwrap()
     }
 
+    pub fn set_engine(&self, engine: Rc<RefCell<TorrentEngine>>) {
+        *self.imp().engine.borrow_mut() = Some(engine);
+    }
+
+    fn sequential_switch(&self) -> adw::SwitchRow {
+        self.imp().sequential_switch.borrow().clone().unwrap()
+    }
+
+    pub fn set_storage(&self, storage: crate::storage::Storage) {
+        *self.imp().storage.borrow_mut() = Some(storage);
+    }
+
     pub fn new(shared_update: Rc<RefCell<Option<UiUpdate>>>, name: &str) -> Self {
         let obj: Self = glib::Object::builder()
             .property("title", name)
@@ -484,6 +471,28 @@ impl RillInfoDialog {
     }
 
     pub fn apply_update(&self, update: &UiUpdate) {
+        let last_toggle_opt = *self.imp().last_sequential_toggle.borrow();
+        let ignore_sequential_update = if let Some(last_toggle) = last_toggle_opt {
+            if last_toggle.elapsed() < std::time::Duration::from_millis(2000) {
+                if update.sequential == self.sequential_switch().is_active() {
+                    self.imp().last_sequential_toggle.replace(None);
+                    false
+                } else {
+                    true
+                }
+            } else {
+                self.imp().last_sequential_toggle.replace(None);
+                false
+            }
+        } else {
+            false
+        };
+
+        if !ignore_sequential_update && self.sequential_switch().is_active() != update.sequential {
+            self.imp().updating_ui.replace(true);
+            self.sequential_switch().set_active(update.sequential);
+            self.imp().updating_ui.replace(false);
+        }
         let progress = if update.total > 0 {
             update.downloaded as f64 / update.total as f64
         } else {
@@ -499,36 +508,6 @@ impl RillInfoDialog {
         self.state_lbl().set_text(&state_text);
 
         self.progress_bar().set_fraction(progress);
-
-        // Update pieces bitfield
-        let bitfield = get_downloaded_pieces_bitfield(
-            &update.info_hash,
-            update.total_pieces,
-            update.downloaded_pieces,
-        );
-        *self.imp().pieces_bitfield.borrow_mut() = bitfield;
-
-        // Queue redraw
-        self.pieces_grid().queue_draw();
-
-        // Dynamically adjust preferred content height based on width
-        let total = update.total_pieces;
-        if total > 0 {
-            let width = self.pieces_grid().width() as f64;
-            let width = if width > 0.0 { width } else { 480.0 };
-            let block_size = 4.0;
-            let gap = 1.0;
-            let cols = ((width - gap) / (block_size + gap)).floor().max(1.0) as usize;
-            let rows = total.div_ceil(cols);
-            let target_height = ((rows as f64) * (block_size + gap) + gap).ceil() as i32;
-            if self.pieces_grid().content_height() != target_height {
-                self.pieces_grid().set_content_height(target_height);
-            }
-        } else {
-            if self.pieces_grid().content_height() != 0 {
-                self.pieces_grid().set_content_height(0);
-            }
-        }
 
         let size_text = if update.total > 0 {
             format!(
@@ -688,33 +667,6 @@ impl RillInfoDialog {
         }
     }
 
-    fn draw_pieces_grid(&self, _area: &gtk::DrawingArea, cr: &cairo::Context, width: f64, _height: f64) {
-        let bitfield = self.imp().pieces_bitfield.borrow();
-        if bitfield.is_empty() {
-            return;
-        }
-
-        let block_size = 4.0;
-        let gap = 1.0;
-        let cols = ((width - gap) / (block_size + gap)).floor().max(1.0) as usize;
-        
-        for (i, &downloaded) in bitfield.iter().enumerate() {
-            let col = i % cols;
-            let row = i / cols;
-            
-            let x = gap + (col as f64) * (block_size + gap);
-            let y = gap + (row as f64) * (block_size + gap);
-            
-            if downloaded {
-                cr.set_source_rgba(0.208, 0.518, 0.894, 1.0);
-            } else {
-                cr.set_source_rgba(0.5, 0.5, 0.5, 0.2);
-            }
-            
-            cr.rectangle(x, y, block_size, block_size);
-            let _ = cr.fill();
-        }
-    }
 }
 
 fn load_torrent_files(uri: &str, output_dir: &Path) -> Vec<TorrentFileInfo> {
@@ -859,49 +811,3 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-struct SimpleRng {
-    state: u64,
-}
-
-impl SimpleRng {
-    fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    fn next_u32(&mut self) -> u32 {
-        self.state = self.state.wrapping_mul(1664525).wrapping_add(1013904223);
-        (self.state >> 32) as u32
-    }
-}
-
-fn hash_seed(info_hash: &str) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    info_hash.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn get_downloaded_pieces_bitfield(info_hash: &str, total: usize, downloaded: usize) -> Vec<bool> {
-    let mut bitfield = vec![false; total];
-    if total == 0 {
-        return bitfield;
-    }
-    
-    let mut indices: Vec<usize> = (0..total).collect();
-    let seed = hash_seed(info_hash);
-    let mut rng = SimpleRng::new(seed);
-    
-    // Fisher-Yates shuffle
-    for i in (1..total).rev() {
-        let j = (rng.next_u32() as usize) % (i + 1);
-        indices.swap(i, j);
-    }
-    
-    let limit = downloaded.min(total);
-    for &idx in &indices[..limit] {
-        bitfield[idx] = true;
-    }
-    
-    bitfield
-}

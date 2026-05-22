@@ -28,14 +28,25 @@ progressbar.thin > trough > progress {
     min-width: 40px;
     min-height: 40px;
     padding: 0;
-}
-.torrent-icon-avatar image {
-    -gtk-icon-size: 18px;
+    margin: 0;
+    -gtk-icon-size: 16px;
 }
 .torrent-icon-avatar.accent { background-color: alpha(@accent_color, 0.18); color: @accent_color; }
 .torrent-icon-avatar.success { background-color: alpha(@success_color, 0.15); color: @success_color; }
 .torrent-icon-avatar.error { background-color: alpha(@error_color, 0.15); color: @error_color; }
-.torrent-icon-avatar.dim { background-color: alpha(@card_fg_color, 0.06); color: alpha(@card_fg_color, 0.40); }
+.torrent-icon-avatar.dim { background-color: alpha(@card_fg_color, 0.12); color: alpha(@card_fg_color, 0.60); }
+
+button.circular {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+}
+button.circular image {
+    padding: 0;
+    margin: 0;
+    -gtk-icon-size: 16px;
+}
 ";
 
 mod imp {
@@ -52,7 +63,9 @@ mod imp {
         pub empty_page: RefCell<Option<adw::StatusPage>>,
         pub search_entry: RefCell<Option<gtk::SearchEntry>>,
         pub add_btn: RefCell<Option<gtk::MenuButton>>,
-        pub title_stack: RefCell<Option<gtk::Stack>>,
+        pub search_bar: RefCell<Option<gtk::SearchBar>>,
+        pub search_btn: RefCell<Option<gtk::ToggleButton>>,
+        pub toast_overlay: RefCell<Option<adw::ToastOverlay>>,
 
         pub engine: RefCell<Option<Rc<RefCell<TorrentEngine>>>>,
         pub model: RefCell<Option<Rc<RefCell<TorrentModel>>>>,
@@ -61,6 +74,10 @@ mod imp {
         pub rows: RefCell<HashMap<String, RillRow>>,
         pub info_dialogs: RefCell<HashMap<String, Rc<RillInfoDialog>>>,
         pub deleted_torrents: RefCell<std::collections::HashSet<String>>,
+        pub selection_mode: RefCell<bool>,
+        pub selected_hashes: RefCell<std::collections::HashSet<String>>,
+        pub cancel_btn: RefCell<Option<gtk::Button>>,
+        pub window_title: RefCell<Option<adw::WindowTitle>>,
     }
 
     #[glib::object_subclass]
@@ -135,7 +152,11 @@ mod imp {
                 if let Some(window) = obj_weak1.upgrade()
                     && let Ok(rill_row) = row.clone().downcast::<RillRow>()
                 {
-                    window.open_info_dialog(&rill_row);
+                    if window.is_selection_mode() {
+                        window.toggle_row_selection(&rill_row);
+                    } else {
+                        window.open_info_dialog(&rill_row);
+                    }
                 }
             });
 
@@ -144,7 +165,11 @@ mod imp {
                 if let Some(window) = obj_weak2.upgrade()
                     && let Ok(rill_row) = row.clone().downcast::<RillRow>()
                 {
-                    window.open_info_dialog(&rill_row);
+                    if window.is_selection_mode() {
+                        window.toggle_row_selection(&rill_row);
+                    } else {
+                        window.open_info_dialog(&rill_row);
+                    }
                 }
             });
 
@@ -153,7 +178,11 @@ mod imp {
                 if let Some(window) = obj_weak3.upgrade()
                     && let Ok(rill_row) = row.clone().downcast::<RillRow>()
                 {
-                    window.open_info_dialog(&rill_row);
+                    if window.is_selection_mode() {
+                        window.toggle_row_selection(&rill_row);
+                    } else {
+                        window.open_info_dialog(&rill_row);
+                    }
                 }
             });
 
@@ -183,18 +212,48 @@ mod imp {
             // ---- Header bar ----
             let window_title = adw::WindowTitle::new("Rill", "");
 
+            let cancel_btn = gtk::Button::builder()
+                .label("Cancel")
+                .visible(false)
+                .build();
+
+            let obj_weak_cancel = obj.downgrade();
+            cancel_btn.connect_clicked(move |_| {
+                if let Some(window) = obj_weak_cancel.upgrade() {
+                    window.exit_selection_mode();
+                }
+            });
+
             let search_entry = gtk::SearchEntry::builder()
                 .placeholder_text("Search torrents…")
                 .hexpand(true)
                 .build();
 
-            let title_stack = gtk::Stack::builder()
-                .transition_type(gtk::StackTransitionType::Crossfade)
-                .hhomogeneous(false)
-                .vhomogeneous(false)
+            let search_bar = gtk::SearchBar::builder()
                 .build();
-            title_stack.add_named(&window_title, Some("title"));
-            title_stack.add_named(&search_entry, Some("search"));
+            search_bar.set_child(Some(&search_entry));
+            search_bar.set_key_capture_widget(Some(&*obj));
+
+            let search_btn = gtk::ToggleButton::builder()
+                .icon_name("edit-find-symbolic")
+                .tooltip_text("Search Torrents")
+                .build();
+
+            search_btn
+                .bind_property("active", &search_bar, "search-mode-enabled")
+                .bidirectional()
+                .sync_create()
+                .build();
+
+            let obj_weak = obj.downgrade();
+            search_bar.connect_search_mode_enabled_notify(move |sb| {
+                if let Some(window) = obj_weak.upgrade() {
+                    if !sb.property::<bool>("search-mode-enabled") {
+                        window.search_entry().set_text("");
+                        window.clear_search_filter();
+                    }
+                }
+            });
 
             let add_menu = gio::Menu::new();
             add_menu.append(Some("_Add Torrent File…"), Some("win.add-file"));
@@ -225,15 +284,21 @@ mod imp {
 
             let header_bar = adw::HeaderBar::builder()
                 .build();
-            header_bar.set_title_widget(Some(&title_stack));
+            header_bar.set_title_widget(Some(&window_title));
+            header_bar.pack_start(&cancel_btn);
             header_bar.pack_start(&add_btn);
+            header_bar.pack_start(&search_btn);
             header_bar.pack_end(&menu_btn);
 
             let toolbar_view = adw::ToolbarView::builder().build();
             toolbar_view.add_top_bar(&header_bar);
+            toolbar_view.add_top_bar(&search_bar);
             toolbar_view.set_content(Some(&scroll));
 
-            obj.set_content(Some(&toolbar_view));
+            let toast_overlay = adw::ToastOverlay::new();
+            toast_overlay.set_child(Some(&toolbar_view));
+
+            obj.set_content(Some(&toast_overlay));
 
             // Store
             self.dl_list.replace(Some(dl_list));
@@ -245,7 +310,11 @@ mod imp {
             self.empty_page.replace(Some(empty_page));
             self.search_entry.replace(Some(search_entry));
             self.add_btn.replace(Some(add_btn));
-            self.title_stack.replace(Some(title_stack));
+            self.search_bar.replace(Some(search_bar));
+            self.search_btn.replace(Some(search_btn));
+            self.toast_overlay.replace(Some(toast_overlay));
+            self.cancel_btn.replace(Some(cancel_btn));
+            self.window_title.replace(Some(window_title));
         }
     }
     impl WidgetImpl for RillWindow {}
@@ -255,6 +324,7 @@ mod imp {
 }
 
 glib::wrapper! {
+    /// The main application window for Rill.
     pub struct RillWindow(ObjectSubclass<imp::RillWindow>)
         @extends adw::ApplicationWindow, gtk::ApplicationWindow, gtk::Window, gtk::Widget,
         @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
@@ -262,6 +332,15 @@ glib::wrapper! {
 
 // ---- Getters ----
 impl RillWindow {
+    /// Displays a toast notification on the main window.
+    pub fn show_toast(&self, message: &str) {
+        if let Some(overlay) = self.imp().toast_overlay.borrow().as_ref() {
+            let toast = adw::Toast::new(message);
+            toast.set_timeout(4);
+            overlay.add_toast(toast);
+        }
+    }
+
     fn dl_list(&self) -> gtk::ListBox {
         self.imp().dl_list.borrow().clone().unwrap()
     }
@@ -290,8 +369,13 @@ impl RillWindow {
     fn add_btn(&self) -> gtk::MenuButton {
         self.imp().add_btn.borrow().clone().unwrap()
     }
-    fn title_stack(&self) -> gtk::Stack {
-        self.imp().title_stack.borrow().clone().unwrap()
+    #[allow(dead_code)]
+    fn search_bar(&self) -> gtk::SearchBar {
+        self.imp().search_bar.borrow().clone().unwrap()
+    }
+    #[allow(dead_code)]
+    fn search_btn(&self) -> gtk::ToggleButton {
+        self.imp().search_btn.borrow().clone().unwrap()
     }
 }
 
@@ -365,6 +449,27 @@ impl RillWindow {
             }
 
             if let Some(ref name) = keyval.name() {
+                if &**name == "Escape" {
+                    let mut handled = false;
+                    if window.is_selection_mode() {
+                        window.exit_selection_mode();
+                        handled = true;
+                    }
+                    if window.search_bar().is_search_mode() {
+                        window.search_bar().set_search_mode(false);
+                        handled = true;
+                    }
+                    if handled {
+                        return glib::Propagation::Stop;
+                    }
+                }
+            }
+
+            if window.search_entry().is_focus() {
+                return glib::Propagation::Proceed;
+            }
+
+            if let Some(ref name) = keyval.name() {
                 match &**name as &str {
                     "Delete" => {
                         window.delete_selected();
@@ -374,31 +479,18 @@ impl RillWindow {
                         window.toggle_selected();
                         return glib::Propagation::Stop;
                     }
-                    "Escape" if window.search_entry().is_visible() => {
-                        window.search_entry().set_text("");
-                        window.search_entry().set_visible(false);
-                        window.title_stack().set_visible_child_name("title");
-                        window.clear_search_filter();
-                        return glib::Propagation::Stop;
-                    }
                     _ => {}
                 }
             }
+
             glib::Propagation::Proceed
         });
         self.add_controller(key_controller);
     }
 
     fn toggle_search(&self) {
-        let showing = self.title_stack().visible_child_name().as_deref() == Some("search");
-        if showing {
-            self.search_entry().set_text("");
-            self.title_stack().set_visible_child_name("title");
-            self.clear_search_filter();
-        } else {
-            self.title_stack().set_visible_child_name("search");
-            self.search_entry().grab_focus();
-        }
+        let btn = self.search_btn();
+        btn.set_active(!btn.is_active());
     }
 
     fn setup_search(&self) {
@@ -530,29 +622,33 @@ impl RillWindow {
         if let Some(engine) = self.imp().engine.borrow().as_ref() {
             engine.borrow().stop(info_hash);
         }
-        if let Some(storage) = self.imp().storage.borrow().as_ref()
-            && let Err(e) = storage.delete_torrent(info_hash)
-        {
-            log::warn!("Failed to delete torrent from database: {}", e);
-        }
-
         if delete_files
             && let (Some(dir), Some(name)) = (output_dir_to_remove, torrent_name)
         {
-            let torrent_path = dir.join(&name);
+            let safe_name = name.replace("/", "_").replace("\\", "_").replace("..", "_");
+            let torrent_path = dir.join(&safe_name);
             if torrent_path.exists() {
                 log::info!("Deleting torrent data path: {}", torrent_path.display());
-                if torrent_path.is_dir() {
-                    if let Err(e) = std::fs::remove_dir_all(&torrent_path) {
-                        log::warn!("Failed to delete torrent data directory {}: {}", torrent_path.display(), e);
-                    }
+                let result = if torrent_path.is_dir() {
+                    std::fs::remove_dir_all(&torrent_path)
                 } else {
-                    if let Err(e) = std::fs::remove_file(&torrent_path) {
-                        log::warn!("Failed to delete torrent data file {}: {}", torrent_path.display(), e);
-                    }
+                    std::fs::remove_file(&torrent_path)
+                };
+                if let Err(e) = result {
+                    log::warn!("Failed to delete torrent data {}: {}", torrent_path.display(), e);
+                    self.show_toast(&format!("Failed to delete data: {}", e));
+                    return;
                 }
             } else {
                 log::warn!("Torrent data path does not exist: {}", torrent_path.display());
+            }
+        }
+
+        if let Some(storage) = self.imp().storage.borrow().as_ref() {
+            if let Err(e) = storage.delete_torrent(info_hash) {
+                log::warn!("Failed to delete torrent from database: {}", e);
+                self.show_toast(&format!("Failed to update database: {}", e));
+                return;
             }
         }
 
@@ -591,19 +687,7 @@ impl RillWindow {
                 }
             }
 
-            // Check if any torrent is active (downloading)
-            let has_active = window.imp().rows.borrow().values().any(|row| {
-                row.state() == TorrentUiState::Downloading
-            });
-
-            if has_active {
-                log::info!("Active torrents present, hiding window instead of exiting");
-                #[allow(deprecated)]
-                window.hide();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
+            glib::Propagation::Proceed
         });
     }
 
@@ -644,7 +728,7 @@ impl RillWindow {
                     glib::spawn_future_local(async move {
                         engine
                             .borrow_mut()
-                            .start(name, path.to_string_lossy().to_string(), dir, tx);
+                            .start(name, path.to_string_lossy().to_string(), dir, false, tx);
                     });
                     return true;
                 }
@@ -718,6 +802,7 @@ impl RillWindow {
                                     window.delete_torrent(&info_hash);
                                 } else {
                                     log::error!("Torrent {} finished with error: {}", info_hash, err);
+                                    window.show_toast(&format!("Error: {}", err));
                                 }
                             }
                             None => {
@@ -761,24 +846,54 @@ impl RillWindow {
             return;
         }
 
-        if let Some(model) = self.imp().model.borrow().as_ref() {
-            model.borrow_mut().update_torrent(update.clone());
-        }
+        let mut final_update = update.clone();
 
         let mut rows = self.imp().rows.borrow_mut();
         if let Some(existing_row) = rows.get(&update.info_hash) {
+            if let Some(prev) = existing_row.imp().latest_update.borrow().as_ref() {
+                if final_update.total == 0 {
+                    final_update.total = prev.total;
+                    final_update.downloaded = prev.downloaded;
+                }
+                if final_update.total_pieces == 0 {
+                    final_update.total_pieces = prev.total_pieces;
+                    final_update.downloaded_pieces = prev.downloaded_pieces;
+                }
+            }
+        } else {
+            // Check database to see if we can pre-populate from a saved record
+            if let Some(storage) = self.imp().storage.borrow().as_ref()
+                && let Ok(saved) = storage.load_torrents()
+                && let Some(t) = saved.iter().find(|t| t.info_hash == update.info_hash)
+            {
+                if final_update.total == 0 {
+                    final_update.total = t.total;
+                    final_update.downloaded = t.downloaded;
+                }
+                if final_update.total_pieces == 0 {
+                    final_update.total_pieces = t.total_pieces as usize;
+                    final_update.downloaded_pieces = t.downloaded_pieces as usize;
+                }
+            }
+        }
+
+        if let Some(model) = self.imp().model.borrow().as_ref() {
+            model.borrow_mut().update_torrent(final_update.clone());
+        }
+
+        if let Some(existing_row) = rows.get(&update.info_hash) {
             let old_state = existing_row.state();
-            existing_row.update(update);
+            existing_row.update(&final_update);
 
-            self.save_torrent_to_db(update);
+            self.save_torrent_to_db(&final_update);
 
-            if old_state != update.state {
+            if old_state != final_update.state {
                 if let Some(parent) = existing_row.parent()
                     && let Ok(list_box) = parent.downcast::<gtk::ListBox>()
                 {
                     list_box.remove(existing_row);
                 }
-                let target_list = list_for_state(update.state, self);
+                let target_list = list_for_state(final_update.state, self);
                 target_list.append(existing_row);
                 self.update_section_visibility();
                 drop(rows);
@@ -786,15 +901,17 @@ impl RillWindow {
             }
         } else {
             if let Some(storage) = self.imp().storage.borrow().as_ref() {
-                let torrent = SavedTorrent::new(
-                    update.info_hash.clone(),
-                    update.name.clone(),
-                    update.uri.clone(),
+                let mut torrent = SavedTorrent::new(
+                    final_update.info_hash.clone(),
+                    final_update.name.clone(),
+                    final_update.uri.clone(),
                     "paused".to_string(),
-                    update.downloaded,
-                    update.total,
-                    update.output_dir.clone(),
+                    final_update.downloaded,
+                    final_update.total,
+                    final_update.output_dir.clone(),
                 );
+                torrent.total_pieces = final_update.total_pieces as u64;
+                torrent.downloaded_pieces = final_update.downloaded_pieces as u64;
                 if let Err(e) = storage.save_torrent(&torrent) {
                     log::warn!("Failed to save new torrent: {}", e);
                 }
@@ -803,11 +920,11 @@ impl RillWindow {
             let engine = self.imp().engine.borrow();
             let tx = self.imp().tx.borrow();
             if let (Some(engine), Some(tx)) = (engine.as_ref(), tx.as_ref()) {
-                let new_row = RillRow::new(update.info_hash.clone(), engine.clone(), tx.clone());
-                new_row.update(update);
-                rows.insert(update.info_hash.clone(), new_row.clone());
+                let new_row = RillRow::new(final_update.info_hash.clone(), engine.clone(), tx.clone());
+                new_row.update(&final_update);
+                rows.insert(final_update.info_hash.clone(), new_row.clone());
 
-                let target_list = list_for_state(update.state, self);
+                let target_list = list_for_state(final_update.state, self);
                 target_list.append(&new_row);
                 self.update_section_visibility();
                 drop(rows);
@@ -835,6 +952,204 @@ impl RillWindow {
         gtk::prelude::GtkWindowExt::present(self);
     }
 
+    pub fn is_selection_mode(&self) -> bool {
+        *self.imp().selection_mode.borrow()
+    }
+
+    pub fn enter_selection_mode(&self) {
+        let imp = self.imp();
+        if *imp.selection_mode.borrow() {
+            return;
+        }
+        *imp.selection_mode.borrow_mut() = true;
+        imp.selected_hashes.borrow_mut().clear();
+
+        if let Some(btn) = imp.add_btn.borrow().as_ref() {
+            btn.set_visible(false);
+        }
+        if let Some(btn) = imp.search_btn.borrow().as_ref() {
+            btn.set_visible(false);
+        }
+        if let Some(btn) = imp.cancel_btn.borrow().as_ref() {
+            btn.set_visible(true);
+        }
+
+        // Close search if open
+        if let Some(bar) = imp.search_bar.borrow().as_ref() {
+            bar.set_search_mode(false);
+        }
+
+        self.update_selection_title();
+
+        let rows = imp.rows.borrow();
+        for row in rows.values() {
+            row.set_selection_mode(true);
+            row.set_selected(false);
+        }
+    }
+
+    pub fn exit_selection_mode(&self) {
+        let imp = self.imp();
+        if !*imp.selection_mode.borrow() {
+            return;
+        }
+        *imp.selection_mode.borrow_mut() = false;
+        imp.selected_hashes.borrow_mut().clear();
+
+        if let Some(btn) = imp.add_btn.borrow().as_ref() {
+            btn.set_visible(true);
+        }
+        if let Some(btn) = imp.search_btn.borrow().as_ref() {
+            btn.set_visible(true);
+        }
+        if let Some(btn) = imp.cancel_btn.borrow().as_ref() {
+            btn.set_visible(false);
+        }
+
+        if let Some(title) = imp.window_title.borrow().as_ref() {
+            title.set_title("Rill");
+            title.set_subtitle("");
+        }
+
+        let rows = imp.rows.borrow();
+        for row in rows.values() {
+            row.set_selection_mode(false);
+            row.set_selected(false);
+        }
+    }
+
+    pub fn on_row_selection_toggled(&self, row: &RillRow, selected: bool) {
+        let hash = row.info_hash();
+        if selected {
+            self.imp().selected_hashes.borrow_mut().insert(hash);
+        } else {
+            self.imp().selected_hashes.borrow_mut().remove(&hash);
+        }
+        self.update_selection_title();
+    }
+
+    pub fn toggle_row_selection(&self, row: &RillRow) {
+        row.set_selected(!row.is_selected());
+    }
+
+    fn update_selection_title(&self) {
+        let imp = self.imp();
+        if let Some(title) = imp.window_title.borrow().as_ref() {
+            let count = imp.selected_hashes.borrow().len();
+            title.set_title("Select Torrents");
+            title.set_subtitle(&format!("{} selected", count));
+        }
+    }
+
+    pub fn select_all_torrents(&self) {
+        let rows = self.imp().rows.borrow();
+        for row in rows.values() {
+            row.set_selected(true);
+        }
+    }
+
+    pub fn deselect_all_torrents(&self) {
+        let rows = self.imp().rows.borrow();
+        for row in rows.values() {
+            row.set_selected(false);
+        }
+    }
+
+    pub fn start_selected_torrents(&self) {
+        let hashes: Vec<String> = self.imp().selected_hashes.borrow().iter().cloned().collect();
+        let engine = self.imp().engine.borrow().clone();
+        if let Some(engine) = engine {
+            let rows = self.imp().rows.borrow();
+            for hash in hashes {
+                if let Some(row) = rows.get(&hash) {
+                    let state = row.state();
+                    if state == TorrentUiState::Paused {
+                        row.update_ui_state(TorrentUiState::Downloading);
+                        if let Some(tx) = row.imp().tx.borrow().as_ref()
+                            && let Some(prev) = row.imp().latest_update.borrow().as_ref()
+                        {
+                            let mut prospective = prev.clone();
+                            prospective.state = TorrentUiState::Downloading;
+                            let _ = tx.try_send(UiEvent::Update(prospective));
+                        }
+                        engine.borrow().toggle(&hash);
+                    }
+                }
+            }
+        }
+        self.exit_selection_mode();
+        self.enforce_queue_limits();
+    }
+
+    pub fn stop_selected_torrents(&self) {
+        let hashes: Vec<String> = self.imp().selected_hashes.borrow().iter().cloned().collect();
+        let engine = self.imp().engine.borrow().clone();
+        if let Some(engine) = engine {
+            let rows = self.imp().rows.borrow();
+            for hash in hashes {
+                if let Some(row) = rows.get(&hash) {
+                    let state = row.state();
+                    if state == TorrentUiState::Downloading {
+                        row.update_ui_state(TorrentUiState::Paused);
+                        if let Some(tx) = row.imp().tx.borrow().as_ref()
+                            && let Some(prev) = row.imp().latest_update.borrow().as_ref()
+                        {
+                            let mut prospective = prev.clone();
+                            prospective.state = TorrentUiState::Paused;
+                            prospective.speed_down = 0;
+                            prospective.speed_up = 0;
+                            let _ = tx.try_send(UiEvent::Update(prospective));
+                        }
+                        engine.borrow().toggle(&hash);
+                    }
+                }
+            }
+        }
+        self.exit_selection_mode();
+        self.enforce_queue_limits();
+    }
+
+    pub fn remove_selected_torrents(&self) {
+        let hashes: Vec<String> = self.imp().selected_hashes.borrow().iter().cloned().collect();
+        if hashes.is_empty() {
+            return;
+        }
+
+        let delete_files_check = gtk::CheckButton::builder()
+            .label("Delete downloaded data files")
+            .active(false)
+            .build();
+
+        let count = hashes.len();
+        let dialog = adw::MessageDialog::builder()
+            .transient_for(self)
+            .modal(true)
+            .heading("Delete Selected Torrents?")
+            .body(format!("Are you sure you want to delete {} selected torrents? This action cannot be undone.", count))
+            .extra_child(&delete_files_check)
+            .build();
+
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("delete", "Delete");
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+
+        let window_weak = self.downgrade();
+        dialog.connect_response(None, move |dialog, response| {
+            if response == "delete" && let Some(window) = window_weak.upgrade() {
+                let delete_files = delete_files_check.is_active();
+                for hash in &hashes {
+                    window.delete_torrent_confirmed(hash, delete_files);
+                }
+                window.exit_selection_mode();
+            }
+            dialog.destroy();
+        });
+
+        dialog.present();
+    }
+
     pub fn open_info_dialog(&self, rill_row: &RillRow) {
         let info_hash = rill_row.info_hash();
         let mut dialogs = self.imp().info_dialogs.borrow_mut();
@@ -851,13 +1166,19 @@ impl RillWindow {
 
         if needs_create && rill_row.imp().latest_update.borrow().is_some() {
             let (w_width, w_height) = self.default_size();
-            let target_width = (w_width - 60).max(540);
-            let target_height = (w_height - 40).max(500);
+            let target_width = (w_width / 2).max(360);
+            let target_height = (w_height / 2).max(400);
 
             let dialog = RillInfoDialog::new(
                 rill_row.latest_update(),
                 &rill_row.name(),
             );
+            if let Some(engine) = self.imp().engine.borrow().as_ref() {
+                dialog.set_engine(engine.clone());
+            }
+            if let Some(storage) = self.imp().storage.borrow().as_ref() {
+                dialog.set_storage(storage.clone());
+            }
             dialog.set_transient_for(Some(self));
             dialog.set_modal(true);
             dialog.set_default_width(target_width);
@@ -940,6 +1261,7 @@ impl RillWindow {
                 peers_list: Vec::new(),
                 total_pieces: torrent.total_pieces as usize,
                 downloaded_pieces: torrent.downloaded_pieces as usize,
+                sequential: torrent.sequential,
             };
 
             if let Some(model) = self.imp().model.borrow().as_ref() {
@@ -954,6 +1276,7 @@ impl RillWindow {
                     torrent.name.clone(),
                     torrent.uri.clone(),
                     torrent.output_dir_path(),
+                    torrent.sequential,
                     tx.clone(),
                 );
 

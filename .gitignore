@@ -1,3 +1,5 @@
 /target
+**/target/
 .serena
 .antigravitycli
+test_toast.rs

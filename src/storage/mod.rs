@@ -80,6 +80,24 @@ impl Storage {
             .map_err(|e| format!("Failed to delete torrent: {}", e))
     }
 
+    /// Update torrent sequential flag
+    pub fn update_torrent_sequential(&self, info_hash: &str, sequential: bool) -> Result<(), String> {
+        self.db
+            .lock()
+            .unwrap()
+            .update_torrent_sequential(info_hash, sequential)
+            .map_err(|e| format!("Failed to update torrent sequential flag: {}", e))
+    }
+
+    /// Pause all downloading torrents
+    pub fn pause_all_torrents(&self) -> Result<(), String> {
+        self.db
+            .lock()
+            .unwrap()
+            .pause_all_torrents()
+            .map_err(|e| format!("Failed to pause all torrents: {}", e))
+    }
+
     /// Load app settings
     pub fn load_settings(&self) -> AppSettings {
         self.db.lock().unwrap().load_settings()

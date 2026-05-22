@@ -16,6 +16,7 @@ pub struct SavedTorrent {
     pub last_active: i64,
     pub total_pieces: u64,
     pub downloaded_pieces: u64,
+    pub sequential: bool,
 }
 
 impl SavedTorrent {
@@ -42,6 +43,7 @@ impl SavedTorrent {
             last_active: now,
             total_pieces: 0,
             downloaded_pieces: 0,
+            sequential: false,
         }
     }
 

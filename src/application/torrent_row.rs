@@ -15,12 +15,13 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct RillRow {
         pub icon: RefCell<Option<gtk::Image>>,
-        pub icon_wrap: RefCell<Option<gtk::Box>>,
         pub row_box: RefCell<Option<gtk::Box>>,
         pub name_lbl: RefCell<Option<gtk::Label>>,
         pub status_lbl: RefCell<Option<gtk::Label>>,
         pub progress: RefCell<Option<gtk::ProgressBar>>,
         pub action_btn: RefCell<Option<gtk::Button>>,
+        pub action_icon: RefCell<Option<gtk::Image>>,
+        pub check_btn: RefCell<Option<gtk::CheckButton>>,
 
         pub info_hash: RefCell<String>,
         pub state: RefCell<TorrentUiState>,
@@ -71,44 +72,55 @@ mod imp {
 
             let icon = gtk::Image::builder()
                 .icon_name("go-down-symbolic")
-                .pixel_size(18)
-                .hexpand(true)
-                .vexpand(true)
+                .pixel_size(16)
+                .halign(gtk::Align::Center)
+                .valign(gtk::Align::Center)
+                .css_classes(["torrent-icon-avatar", "accent"])
+                .build();
+            icon.set_size_request(40, 40);
+
+            let action_icon = gtk::Image::builder()
+                .icon_name("media-playback-pause-symbolic")
+                .pixel_size(16)
                 .halign(gtk::Align::Center)
                 .valign(gtk::Align::Center)
                 .build();
 
-            let icon_wrap = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            icon_wrap.set_halign(gtk::Align::Center);
-            icon_wrap.set_valign(gtk::Align::Center);
-            icon_wrap.set_size_request(40, 40);
-            icon_wrap.set_css_classes(&["torrent-icon-avatar", "accent"]);
-            icon_wrap.append(&icon);
-
             let action_btn = gtk::Button::builder()
-                .icon_name("media-playback-pause-symbolic")
+                .child(&action_icon)
                 .valign(gtk::Align::Center)
+                .halign(gtk::Align::Center)
                 .css_classes(["circular"])
                 .build();
+            action_btn.set_size_request(36, 36);
+
+            let check_btn = gtk::CheckButton::builder()
+                .valign(gtk::Align::Center)
+                .halign(gtk::Align::Center)
+                .visible(false)
+                .build();
+            check_btn.set_size_request(36, 36);
 
             let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
             row_box.set_margin_top(10);
             row_box.set_margin_bottom(10);
             row_box.set_margin_start(12);
             row_box.set_margin_end(8);
-            row_box.append(&icon_wrap);
+            row_box.append(&icon);
             row_box.append(&info_box);
             row_box.append(&action_btn);
+            row_box.append(&check_btn);
 
             self.obj().set_child(Some(&row_box));
 
             self.icon.replace(Some(icon));
-            self.icon_wrap.replace(Some(icon_wrap));
             self.row_box.replace(Some(row_box));
             self.name_lbl.replace(Some(name_lbl));
             self.status_lbl.replace(Some(status_lbl));
             self.progress.replace(Some(progress));
             self.action_btn.replace(Some(action_btn));
+            self.action_icon.replace(Some(action_icon));
+            self.check_btn.replace(Some(check_btn));
         }
 
         fn dispose(&self) {
@@ -144,16 +156,40 @@ impl RillRow {
         self.imp().icon.borrow().clone().unwrap()
     }
 
-    fn icon_wrap(&self) -> gtk::Box {
-        self.imp().icon_wrap.borrow().clone().unwrap()
-    }
-
     fn row_box(&self) -> gtk::Box {
         self.imp().row_box.borrow().clone().unwrap()
     }
 
     fn action_btn(&self) -> gtk::Button {
         self.imp().action_btn.borrow().clone().unwrap()
+    }
+
+    fn action_icon(&self) -> gtk::Image {
+        self.imp().action_icon.borrow().clone().unwrap()
+    }
+
+    fn check_btn(&self) -> gtk::CheckButton {
+        self.imp().check_btn.borrow().clone().unwrap()
+    }
+
+    pub fn set_selection_mode(&self, active: bool) {
+        let imp = self.imp();
+        if let Some(btn) = imp.action_btn.borrow().as_ref() {
+            btn.set_visible(!active);
+        }
+        if let Some(chk) = imp.check_btn.borrow().as_ref() {
+            chk.set_visible(active);
+        }
+    }
+
+    pub fn set_selected(&self, selected: bool) {
+        if let Some(chk) = self.imp().check_btn.borrow().as_ref() {
+            chk.set_active(selected);
+        }
+    }
+
+    pub fn is_selected(&self) -> bool {
+        self.imp().check_btn.borrow().as_ref().map_or(false, |chk| chk.is_active())
     }
 
     pub fn new(
@@ -173,9 +209,9 @@ impl RillRow {
             .button(3)
             .build();
         let row_weak = row.downgrade();
-        gesture.connect_pressed(move |_gesture, _n_press, _x, _y| {
+        gesture.connect_pressed(move |_gesture, _n_press, x, y| {
             if let Some(row) = row_weak.upgrade() {
-                show_context_menu(&row);
+                show_context_menu(&row, x, y);
             }
         });
         row.add_controller(gesture);
@@ -186,6 +222,18 @@ impl RillRow {
         action_btn.connect_clicked(move |_| {
             if let Some(row) = row_weak.upgrade() {
                 row.on_action();
+            }
+        });
+
+        // Checkbox toggled
+        let row_weak = row.downgrade();
+        let check_btn = row.check_btn();
+        check_btn.connect_toggled(move |chk| {
+            if let Some(row) = row_weak.upgrade()
+                && let Some(root) = row.root()
+                && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+            {
+                window.on_row_selection_toggled(&row, chk.is_active());
             }
         });
 
@@ -216,10 +264,26 @@ impl RillRow {
             match state {
                 TorrentUiState::Downloading => {
                     self.update_ui_state(TorrentUiState::Paused);
+                    if let Some(tx) = imp.tx.borrow().as_ref()
+                        && let Some(prev) = imp.latest_update.borrow().as_ref()
+                    {
+                        let mut prospective = prev.clone();
+                        prospective.state = TorrentUiState::Paused;
+                        prospective.speed_down = 0;
+                        prospective.speed_up = 0;
+                        let _ = tx.try_send(UiEvent::Update(prospective));
+                    }
                     engine.borrow().toggle(&info_hash);
                 }
                 TorrentUiState::Paused => {
                     self.update_ui_state(TorrentUiState::Downloading);
+                    if let Some(tx) = imp.tx.borrow().as_ref()
+                        && let Some(prev) = imp.latest_update.borrow().as_ref()
+                    {
+                        let mut prospective = prev.clone();
+                        prospective.state = TorrentUiState::Downloading;
+                        let _ = tx.try_send(UiEvent::Update(prospective));
+                    }
                     engine.borrow().toggle(&info_hash);
                 }
                 TorrentUiState::Completed | TorrentUiState::Error => {
@@ -241,9 +305,9 @@ impl RillRow {
             TorrentUiState::Downloading => {
                 // Arrow-down icon in blue tinted circle
                 self.icon().set_icon_name(Some("go-down-symbolic"));
-                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "accent"]);
+                self.icon().set_css_classes(&["torrent-icon-avatar", "accent"]);
                 // Neutral flat pause button
-                self.action_btn().set_icon_name("media-playback-pause-symbolic");
+                self.action_icon().set_icon_name(Some("media-playback-pause-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Pause"));
                 // Full card at full opacity
@@ -252,9 +316,9 @@ impl RillRow {
             TorrentUiState::Paused => {
                 // Pause icon in gray circle
                 self.icon().set_icon_name(Some("media-playback-pause-symbolic"));
-                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "dim"]);
+                self.icon().set_css_classes(&["torrent-icon-avatar", "dim"]);
                 // Neutral flat resume button
-                self.action_btn().set_icon_name("media-playback-start-symbolic");
+                self.action_icon().set_icon_name(Some("media-playback-start-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Resume"));
                 // Dim entire card
@@ -263,17 +327,17 @@ impl RillRow {
             TorrentUiState::Completed => {
                 // Checkmark in green circle
                 self.icon().set_icon_name(Some("emblem-ok-symbolic"));
-                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "success"]);
+                self.icon().set_css_classes(&["torrent-icon-avatar", "success"]);
                 // Trash button (seeding finished)
-                self.action_btn().set_icon_name("user-trash-symbolic");
+                self.action_icon().set_icon_name(Some("user-trash-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
                 self.row_box().set_opacity(1.0);
             }
             TorrentUiState::Error => {
                 self.icon().set_icon_name(Some("dialog-error-symbolic"));
-                self.icon_wrap().set_css_classes(&["torrent-icon-avatar", "error"]);
-                self.action_btn().set_icon_name("user-trash-symbolic");
+                self.icon().set_css_classes(&["torrent-icon-avatar", "error"]);
+                self.action_icon().set_icon_name(Some("user-trash-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
                 self.row_box().set_opacity(1.0);
@@ -317,83 +381,245 @@ impl RillRow {
     }
 }
 
-fn show_context_menu(row: &RillRow) {
+fn show_context_menu(row: &RillRow, x: f64, y: f64) {
     let imp = row.imp();
     let info_hash = imp.info_hash.borrow().clone();
     let state = *imp.state.borrow();
     let engine = imp.engine.borrow().as_ref().cloned();
     let _tx = imp.tx.borrow().clone();
 
+    let is_selection = if let Some(root) = row.root()
+        && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+    {
+        window.is_selection_mode()
+    } else {
+        false
+    };
+
     let menu = gio::Menu::new();
     let actions = gio::SimpleActionGroup::new();
 
-    match state {
-        TorrentUiState::Downloading => {
-            menu.append(Some("_Pause"), Some("ctx.pause"));
+    if is_selection {
+        menu.append(Some("Select _all"), Some("ctx.select_all"));
+        menu.append(Some("_Deselect all"), Some("ctx.deselect_all"));
+        menu.append(Some("_Start selected"), Some("ctx.start_selected"));
+        menu.append(Some("S_top selected"), Some("ctx.stop_selected"));
+        menu.append(Some("_Remove selected"), Some("ctx.remove_selected"));
+
+        if let Some(old_popover) = imp.active_popover.borrow_mut().take() {
+            old_popover.unparent();
         }
-        TorrentUiState::Paused => {
-            menu.append(Some("_Resume"), Some("ctx.resume"));
-        }
-        TorrentUiState::Completed | TorrentUiState::Error => {}
-    }
-    menu.append(Some("_Remove"), Some("ctx.remove"));
 
-    if let Some(old_popover) = imp.active_popover.borrow_mut().take() {
-        old_popover.unparent();
-    }
+        let popover = gtk::PopoverMenu::builder()
+            .menu_model(&menu)
+            .has_arrow(false)
+            .build();
+        popover.set_parent(row);
 
-    let popover = gtk::PopoverMenu::builder()
-        .menu_model(&menu)
-        .has_arrow(false)
-        .build();
-    popover.set_parent(row);
-    imp.active_popover.replace(Some(popover.clone()));
+        let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+        popover.set_pointing_to(Some(&rect));
 
-    if let Some(eng) = engine.clone() {
-        let h = info_hash.clone();
-        let p = popover.clone();
-        let r = row.clone();
-        let a = gio::SimpleAction::new("pause", None);
+        imp.active_popover.replace(Some(popover.clone()));
+
+        let p_weak = popover.downgrade();
+        let weak_row = row.downgrade();
+        let a = gio::SimpleAction::new("select_all", None);
         a.connect_activate(move |_, _| {
-            r.update_ui_state(TorrentUiState::Paused);
-            eng.borrow().toggle(&h);
-            p.popdown();
-        });
-        actions.add_action(&a);
-    }
-
-    if let Some(eng) = engine.clone() {
-        let h = info_hash.clone();
-        let p = popover.clone();
-        let r = row.clone();
-        let a = gio::SimpleAction::new("resume", None);
-        a.connect_activate(move |_, _| {
-            r.update_ui_state(TorrentUiState::Downloading);
-            eng.borrow().toggle(&h);
-            p.popdown();
-        });
-        actions.add_action(&a);
-    }
-
-    if engine.is_some() {
-        let h = info_hash.clone();
-        let p = popover.clone();
-        let a = gio::SimpleAction::new("remove", None);
-        let row_weak = row.downgrade();
-        a.connect_activate(move |_, _| {
-            if let Some(row) = row_weak.upgrade()
-                && let Some(root) = row.root()
+            if let Some(r) = weak_row.upgrade()
+                && let Some(root) = r.root()
                 && let Ok(window) = root.downcast::<crate::application::RillWindow>()
             {
-                window.delete_torrent(&h);
+                window.select_all_torrents();
             }
-            p.popdown();
+            if let Some(p) = p_weak.upgrade() {
+                p.popdown();
+            }
         });
         actions.add_action(&a);
-    }
 
-    popover.insert_action_group("ctx", Some(&actions));
-    popover.popup();
+        let p_weak = popover.downgrade();
+        let weak_row = row.downgrade();
+        let a = gio::SimpleAction::new("deselect_all", None);
+        a.connect_activate(move |_, _| {
+            if let Some(r) = weak_row.upgrade()
+                && let Some(root) = r.root()
+                && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+            {
+                window.deselect_all_torrents();
+            }
+            if let Some(p) = p_weak.upgrade() {
+                p.popdown();
+            }
+        });
+        actions.add_action(&a);
+
+        let p_weak = popover.downgrade();
+        let weak_row = row.downgrade();
+        let a = gio::SimpleAction::new("start_selected", None);
+        a.connect_activate(move |_, _| {
+            if let Some(r) = weak_row.upgrade()
+                && let Some(root) = r.root()
+                && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+            {
+                window.start_selected_torrents();
+            }
+            if let Some(p) = p_weak.upgrade() {
+                p.popdown();
+            }
+        });
+        actions.add_action(&a);
+
+        let p_weak = popover.downgrade();
+        let weak_row = row.downgrade();
+        let a = gio::SimpleAction::new("stop_selected", None);
+        a.connect_activate(move |_, _| {
+            if let Some(r) = weak_row.upgrade()
+                && let Some(root) = r.root()
+                && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+            {
+                window.stop_selected_torrents();
+            }
+            if let Some(p) = p_weak.upgrade() {
+                p.popdown();
+            }
+        });
+        actions.add_action(&a);
+
+        let p_weak = popover.downgrade();
+        let weak_row = row.downgrade();
+        let a = gio::SimpleAction::new("remove_selected", None);
+        a.connect_activate(move |_, _| {
+            if let Some(r) = weak_row.upgrade()
+                && let Some(root) = r.root()
+                && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+            {
+                window.remove_selected_torrents();
+            }
+            if let Some(p) = p_weak.upgrade() {
+                p.popdown();
+            }
+        });
+        actions.add_action(&a);
+
+        popover.insert_action_group("ctx", Some(&actions));
+        popover.popup();
+    } else {
+        match state {
+            TorrentUiState::Downloading => {
+                menu.append(Some("_Pause"), Some("ctx.pause"));
+            }
+            TorrentUiState::Paused => {
+                menu.append(Some("_Resume"), Some("ctx.resume"));
+            }
+            TorrentUiState::Completed | TorrentUiState::Error => {}
+        }
+        menu.append(Some("_Select"), Some("ctx.select"));
+        menu.append(Some("_Remove"), Some("ctx.remove"));
+
+        if let Some(old_popover) = imp.active_popover.borrow_mut().take() {
+            old_popover.unparent();
+        }
+
+        let popover = gtk::PopoverMenu::builder()
+            .menu_model(&menu)
+            .has_arrow(false)
+            .build();
+        popover.set_parent(row);
+
+        let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+        popover.set_pointing_to(Some(&rect));
+
+        imp.active_popover.replace(Some(popover.clone()));
+
+        let p_weak = popover.downgrade();
+        if let Some(engine) = engine.clone() {
+            let h = info_hash.clone();
+            let r = row.clone();
+            let a = gio::SimpleAction::new("pause", None);
+            let p_weak_clone = p_weak.clone();
+            a.connect_activate(move |_, _| {
+                r.update_ui_state(TorrentUiState::Paused);
+                if let Some(tx) = r.imp().tx.borrow().as_ref()
+                    && let Some(prev) = r.imp().latest_update.borrow().as_ref()
+                {
+                    let mut prospective = prev.clone();
+                    prospective.state = TorrentUiState::Paused;
+                    prospective.speed_down = 0;
+                    prospective.speed_up = 0;
+                    let _ = tx.try_send(UiEvent::Update(prospective));
+                }
+                engine.borrow().toggle(&h);
+                if let Some(p) = p_weak_clone.upgrade() {
+                    p.popdown();
+                }
+            });
+            actions.add_action(&a);
+        }
+
+        let p_weak = popover.downgrade();
+        if let Some(engine) = engine.clone() {
+            let h = info_hash.clone();
+            let r = row.clone();
+            let a = gio::SimpleAction::new("resume", None);
+            let p_weak_clone = p_weak.clone();
+            a.connect_activate(move |_, _| {
+                r.update_ui_state(TorrentUiState::Downloading);
+                if let Some(tx) = r.imp().tx.borrow().as_ref()
+                    && let Some(prev) = r.imp().latest_update.borrow().as_ref()
+                {
+                    let mut prospective = prev.clone();
+                    prospective.state = TorrentUiState::Downloading;
+                    let _ = tx.try_send(UiEvent::Update(prospective));
+                }
+                engine.borrow().toggle(&h);
+                if let Some(p) = p_weak_clone.upgrade() {
+                    p.popdown();
+                }
+            });
+            actions.add_action(&a);
+        }
+
+        let p_weak = popover.downgrade();
+        if engine.is_some() {
+            let h = info_hash.clone();
+            let a = gio::SimpleAction::new("remove", None);
+            let row_weak = row.downgrade();
+            let p_weak_clone = p_weak.clone();
+            a.connect_activate(move |_, _| {
+                if let Some(row) = row_weak.upgrade()
+                    && let Some(root) = row.root()
+                    && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+                {
+                    window.delete_torrent(&h);
+                }
+                if let Some(p) = p_weak_clone.upgrade() {
+                    p.popdown();
+                }
+            });
+            actions.add_action(&a);
+        }
+
+        let p_weak = popover.downgrade();
+        let weak_row = row.downgrade();
+        let a = gio::SimpleAction::new("select", None);
+        let p_weak_clone = p_weak.clone();
+        a.connect_activate(move |_, _| {
+            if let Some(r) = weak_row.upgrade()
+                && let Some(root) = r.root()
+                && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+            {
+                window.enter_selection_mode();
+                r.set_selected(true);
+            }
+            if let Some(p) = p_weak_clone.upgrade() {
+                p.popdown();
+            }
+        });
+        actions.add_action(&a);
+
+        popover.insert_action_group("ctx", Some(&actions));
+        popover.popup();
+    }
 }
 
 fn format_size(bytes: u64) -> String {

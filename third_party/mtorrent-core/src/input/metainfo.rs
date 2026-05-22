@@ -143,7 +143,13 @@ fn try_get_length_path_pair(e: &benc::Element) -> Option<(usize, PathBuf)> {
             if let benc::Element::ByteString(data) = e
                 && let Ok(text) = str::from_utf8(data)
             {
-                ret.push(text);
+                let clean: String = text
+                    .chars()
+                    .filter(|&c| c != '/' && c != '\\')
+                    .collect();
+                if !clean.is_empty() && clean != ".." && clean != "." {
+                    ret.push(clean);
+                }
             }
         }
         ret
@@ -155,7 +161,12 @@ fn try_get_length_path_pair(e: &benc::Element) -> Option<(usize, PathBuf)> {
 
         match (dict.get(&length_key), dict.get(&path_key)) {
             (Some(benc::Element::Integer(length)), Some(benc::Element::List(list))) => {
-                Some((*length as usize, path_from_list(list)))
+                let path = path_from_list(list);
+                if path.as_os_str().is_empty() {
+                    None
+                } else {
+                    Some((*length as usize, path))
+                }
             }
             _ => None,
         }
@@ -416,5 +427,30 @@ mod tests {
         assert!(info.files().is_none());
         assert!(info.announce().is_none());
         assert!(info.announce_list().is_none());
+    }
+
+    #[test]
+    fn test_path_traversal_neutralization() {
+        use mtorrent_utils::benc::Element;
+        use std::collections::BTreeMap;
+        
+        // Dictionary with length and unsafe path
+        let mut dict = BTreeMap::new();
+        dict.insert(Element::from("length"), Element::Integer(100));
+        dict.insert(
+            Element::from("path"),
+            Element::List(vec![
+                Element::ByteString(b"..".to_vec()),
+                Element::ByteString(b"etc".to_vec()),
+                Element::ByteString(b"passwd".to_vec()),
+            ]),
+        );
+        let el = Element::Dictionary(dict);
+        
+        let result = super::try_get_length_path_pair(&el);
+        assert!(result.is_some());
+        let (len, path) = result.unwrap();
+        assert_eq!(100, len);
+        assert_eq!(std::path::Path::new("etc/passwd"), path);
     }
 }

@@ -115,6 +115,19 @@ impl RillApplication {
             }
         ));
 
+        // Connect shutdown signal to pause all torrents on exit
+        let storage_clone_shutdown = storage.clone();
+        app.connect_shutdown(glib::clone!(
+            #[weak] engine,
+            move |_app| {
+                log::info!("Application is shutting down. Pausing all torrents...");
+                engine.borrow().pause_all();
+                if let Err(e) = storage_clone_shutdown.pause_all_torrents() {
+                    log::error!("Failed to pause torrents in database during shutdown: {}", e);
+                }
+            }
+        ));
+
         app_self
     }
 
@@ -158,7 +171,7 @@ impl RillApplication {
                 && let Ok(rill_window) = window.downcast::<RillWindow>()
             {
                 show_preferences(
-                    rill_window.upcast_ref::<adw::ApplicationWindow>(),
+                    &rill_window,
                     storage_clone.clone(),
                 );
             }

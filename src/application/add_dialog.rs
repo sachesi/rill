@@ -28,6 +28,7 @@ mod imp {
         pub file_row: RefCell<Option<adw::ActionRow>>,
         pub download_folder_row: RefCell<Option<adw::ActionRow>>,
         pub start_immediately_switch: RefCell<Option<adw::SwitchRow>>,
+        pub sequential_switch: RefCell<Option<adw::SwitchRow>>,
         pub url_group: RefCell<Option<adw::PreferencesGroup>>,
         pub file_group: RefCell<Option<adw::PreferencesGroup>>,
 
@@ -106,11 +107,17 @@ mod imp {
                 .active(true)
                 .build();
 
+            let sequential_switch = adw::SwitchRow::builder()
+                .title("Download from start to finish (sequential)")
+                .active(false)
+                .build();
+
             let options_group = adw::PreferencesGroup::builder()
                 .title("Options")
                 .build();
             options_group.add(&download_folder_row);
             options_group.add(&start_immediately_switch);
+            options_group.add(&sequential_switch);
 
             // Hidden folder label
             let folder_label = gtk::Label::builder()
@@ -146,6 +153,7 @@ mod imp {
             self.file_row.replace(Some(file_row));
             self.download_folder_row.replace(Some(download_folder_row));
             self.start_immediately_switch.replace(Some(start_immediately_switch));
+            self.sequential_switch.replace(Some(sequential_switch));
             self.url_group.replace(Some(url_group));
             self.file_group.replace(Some(file_group));
         }
@@ -188,6 +196,10 @@ impl RillAddDialog {
 
     fn start_immediately_switch(&self) -> adw::SwitchRow {
         self.imp().start_immediately_switch.borrow().clone().unwrap()
+    }
+
+    fn sequential_switch(&self) -> adw::SwitchRow {
+        self.imp().sequential_switch.borrow().clone().unwrap()
     }
 
     pub fn new(
@@ -361,6 +373,7 @@ impl RillAddDialog {
         };
 
         let start_immediately = self.start_immediately_switch().is_active();
+        let sequential = self.sequential_switch().is_active();
         self.close();
 
         if let Some(file_path) = self.imp().selected_file.borrow().as_ref() {
@@ -382,9 +395,9 @@ impl RillAddDialog {
                 .and_then(|t| t.downcast::<crate::application::RillWindow>().ok());
             glib::spawn_future_local(async move {
                 let info_hash = if start_immediately {
-                    engine_clone.borrow_mut().start(name, path_str, dir, tx_clone)
+                    engine_clone.borrow_mut().start(name, path_str, dir, sequential, tx_clone)
                 } else {
-                    engine_clone.borrow_mut().add_paused(name, path_str, dir, tx_clone)
+                    engine_clone.borrow_mut().add_paused(name, path_str, dir, sequential, tx_clone)
                 };
                 if let Some(w) = window_weak {
                     w.allow_torrent(&info_hash);
@@ -401,9 +414,9 @@ impl RillAddDialog {
                     .and_then(|t| t.downcast::<crate::application::RillWindow>().ok());
                 glib::spawn_future_local(async move {
                     let info_hash = if start_immediately {
-                        engine_clone.borrow_mut().start(name, url, dir, tx_clone)
+                        engine_clone.borrow_mut().start(name, url, dir, sequential, tx_clone)
                     } else {
-                        engine_clone.borrow_mut().add_paused(name, url, dir, tx_clone)
+                        engine_clone.borrow_mut().add_paused(name, url, dir, sequential, tx_clone)
                     };
                     if let Some(w) = window_weak {
                         w.allow_torrent(&info_hash);

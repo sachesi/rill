@@ -23,7 +23,7 @@ fn available_pieces(bitfield: &pwp::Bitfield) -> impl Iterator<Item = usize> + C
 /// Keeps track of missing pieces (as opposed to blocks) and their owners.
 #[derive(Debug)]
 pub struct PieceTracker {
-    piece_index_to_owners: HashMap<PieceIndex, HashSet<SocketAddr>>,
+    piece_index_to_owners: Vec<Option<HashSet<SocketAddr>>>,
     owners_to_piece_indices: HashMap<SocketAddr, pwp::Bitfield>,
 
     owner_count_to_piece_indices: BTreeMap<usize, HashSet<PieceIndex>>,
@@ -31,27 +31,42 @@ pub struct PieceTracker {
 
     #[debug(skip)]
     bitfield_factory: Box<dyn Fn() -> pwp::Bitfield>,
+    sequential: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl PieceTracker {
     pub fn new(piece_count: usize) -> Self {
         let indices = (0..piece_count).map(PieceIndex).collect::<HashSet<PieceIndex>>();
+        let sequential = crate::SEQUENTIAL
+            .try_with(std::sync::Arc::clone)
+            .unwrap_or_else(|_| std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
         Self {
-            piece_index_to_owners: indices.iter().map(|index| (*index, HashSet::new())).collect(),
+            piece_index_to_owners: (0..piece_count).map(|_| Some(HashSet::new())).collect(),
             owners_to_piece_indices: HashMap::new(),
             owner_count_to_piece_indices: BTreeMap::from([(0usize, indices)]),
             piece_count_to_owners: BTreeMap::new(),
             bitfield_factory: Box::new(move || pwp::Bitfield::repeat(false, piece_count)),
+            sequential,
         }
     }
 
     /// Get an iterator over the not-yet-downloaded pieces, ordered by the number of
     /// peers that own each piece, such that pieces with fewest owners are yielded first.
-    pub fn missing_pieces_rarest_first(&self) -> impl Iterator<Item = usize> + '_ {
-        self.owner_count_to_piece_indices
-            .iter()
-            .skip_while(|(count, _indices)| **count == 0usize)
-            .flat_map(|(_count, indices)| indices.iter().map(|i| i.0))
+    pub fn missing_pieces_rarest_first(&self) -> Box<dyn Iterator<Item = usize> + '_> {
+        let is_sequential = self.sequential.load(std::sync::atomic::Ordering::Relaxed);
+        if is_sequential {
+            let piece_count = (self.bitfield_factory)().len();
+            Box::new((0..piece_count).filter(move |&i| {
+                self.piece_index_to_owners.get(i).and_then(|opt| opt.as_ref()).map_or(false, |owners| !owners.is_empty())
+            }))
+        } else {
+            Box::new(
+                self.owner_count_to_piece_indices
+                    .iter()
+                    .skip_while(|(count, _indices)| **count == 0usize)
+                    .flat_map(|(_count, indices)| indices.iter().map(|i| i.0))
+            )
+        }
     }
 
     #[cfg(test)]
@@ -64,7 +79,7 @@ impl PieceTracker {
         &self,
         piece_index: usize,
     ) -> impl Iterator<Item = &SocketAddr> + Clone {
-        self.piece_index_to_owners.get(&piece_index).into_iter().flat_map(HashSet::iter)
+        self.piece_index_to_owners.get(piece_index).and_then(|opt| opt.as_ref()).into_iter().flat_map(HashSet::iter)
     }
 
     /// Get piece indices of all pieces owned by a particular peer.
@@ -84,7 +99,7 @@ impl PieceTracker {
     pub fn add_single_record(&mut self, piece_owner: &SocketAddr, piece_index: usize) -> bool {
         let piece_index = PieceIndex(piece_index);
 
-        if let Some(piece_owners) = self.piece_index_to_owners.get_mut(&piece_index) {
+        if let Some(Some(piece_owners)) = self.piece_index_to_owners.get_mut(piece_index.0) {
             let peer_pieces = self
                 .owners_to_piece_indices
                 .entry(*piece_owner)
@@ -121,7 +136,8 @@ impl PieceTracker {
             for piece_index in available_pieces(&pieces).map(PieceIndex) {
                 let owners = self
                     .piece_index_to_owners
-                    .get_mut(&piece_index)
+                    .get_mut(piece_index.0)
+                    .and_then(|opt| opt.as_mut())
                     .expect("Invalid internal state");
                 owners.remove(peer);
                 self.change_owner_count_for_piece(piece_index, |prev_count| {
@@ -141,7 +157,7 @@ impl PieceTracker {
 
     /// Erase all records pertaining to the specified piece.
     pub fn forget_piece(&mut self, piece_index: usize) {
-        if let Some(owners) = self.piece_index_to_owners.remove(&piece_index) {
+        if let Some(owners) = self.piece_index_to_owners.get_mut(piece_index).and_then(|opt| opt.take()) {
             for owner in owners {
                 let pieces =
                     self.owners_to_piece_indices.get_mut(&owner).expect("Invalid internal state");
