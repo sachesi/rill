@@ -20,6 +20,7 @@ impl Database {
         // Enable WAL mode for better concurrency and performance
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "busy_timeout", "5000")?;
         
         let db = Self { conn };
         db.initialize()?;
