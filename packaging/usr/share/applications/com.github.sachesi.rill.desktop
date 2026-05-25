@@ -9,3 +9,4 @@ Categories=Network;P2P;
 MimeType=application/x-bittorrent;x-scheme-handler/magnet;
 StartupNotify=true
 NoDisplay=false
+StartupWMClass = com.github.sachesi.rill
