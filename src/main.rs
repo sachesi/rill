@@ -114,6 +114,7 @@ fn main() {
         pwp_handle,
         storage_handle,
         dht_cmds,
+        storage.clone(),
     )));
 
     // Load saved torrents

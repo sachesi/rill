@@ -384,6 +384,13 @@ impl Database {
             .and_then(|v| v.parse().ok())
             .unwrap_or(1.0);
 
+        let pwp_port = self
+            .get_setting("pwp_port")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
         AppSettings {
             download_folder,
             window_width,
@@ -396,6 +403,7 @@ impl Database {
             global_download_limit,
             global_upload_limit,
             seeding_ratio_limit,
+            pwp_port,
         }
     }
 
@@ -412,6 +420,7 @@ impl Database {
         self.set_setting("global_download_limit", &settings.global_download_limit.to_string())?;
         self.set_setting("global_upload_limit", &settings.global_upload_limit.to_string())?;
         self.set_setting("seeding_ratio_limit", &settings.seeding_ratio_limit.to_string())?;
+        self.set_setting("pwp_port", &settings.pwp_port.to_string())?;
         Ok(())
     }
 }

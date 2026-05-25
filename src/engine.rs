@@ -76,6 +76,7 @@ enum EngineCmd {
         cancel_rx: tokio::sync::oneshot::Receiver<()>,
         ui_tx: Sender<UiEvent>,
         sequential: Arc<std::sync::atomic::AtomicBool>,
+        pwp_port: u16,
     },
 }
 
@@ -91,6 +92,7 @@ pub struct TorrentEngine {
     config_dir: PathBuf,
     #[allow(dead_code)]
     dht_sink: dht::CommandSink,
+    storage: crate::storage::Storage,
 }
 
 impl TorrentEngine {
@@ -101,6 +103,7 @@ impl TorrentEngine {
         pwp_handle: tokio::runtime::Handle,
         storage_handle: tokio::runtime::Handle,
         dht_sink: dht::CommandSink,
+        storage: crate::storage::Storage,
     ) -> Self {
         log::info!("Creating torrent engine, config_dir: {:?}", config_dir);
         let active: Arc<Mutex<HashMap<String, ActiveTorrent>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -123,7 +126,7 @@ impl TorrentEngine {
                 local.run_until(async {
                     while let Some(cmd) = cmd_rx.recv().await {
                         match cmd {
-                            EngineCmd::Start { name, uri, output_dir, canceller, cancel_rx, ui_tx, sequential } => {
+                            EngineCmd::Start { name, uri, output_dir, canceller, cancel_rx, ui_tx, sequential, pwp_port } => {
                                 let pid = peer_id_clone;
                                 let cd = config_dir_clone.clone();
                                 let pwp = pwp_clone.clone();
@@ -154,7 +157,7 @@ impl TorrentEngine {
                                         output_dir: output_dir.clone(),
                                         config_dir: cd,
                                         use_upnp: false,
-                                        pwp_port: Some(0),
+                                        pwp_port: Some(pwp_port),
                                         bind_interface: None,
                                     };
                                     let ctx = app::main::Context {
@@ -226,10 +229,10 @@ impl TorrentEngine {
             peer_id,
             config_dir,
             dht_sink,
+            storage,
         }
     }
 
-    /// Starts downloading a torrent from the given URI.
     pub fn start(&self, name: String, uri: String, output_dir: PathBuf, sequential: bool, ui_tx: Sender<UiEvent>) -> String {
         let info_hash = hash_uri(&uri);
         let mut map = self.active.lock().unwrap();
@@ -282,6 +285,7 @@ impl TorrentEngine {
             cancel_rx,
             ui_tx,
             sequential: seq,
+            pwp_port: self.storage.load_settings().pwp_port,
         });
         info_hash
     }
@@ -409,6 +413,7 @@ impl TorrentEngine {
                 cancel_rx,
                 ui_tx: ui_tx.clone(),
                 sequential: Arc::clone(&seq),
+                pwp_port: self.storage.load_settings().pwp_port,
             });
             let mut active_map2 = self.active.lock().unwrap();
             active_map2.insert(info_hash.to_string(), ActiveTorrent {

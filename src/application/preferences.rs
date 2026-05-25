@@ -197,6 +197,28 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
     limits_group.add(&ul_limit_row);
     network_page.add(&limits_group);
 
+    let conn_group = adw::PreferencesGroup::builder()
+        .title("Connection")
+        .build();
+
+    let port_adj = gtk::Adjustment::new(
+        settings.pwp_port as f64,
+        0.0,
+        65535.0,
+        1.0,
+        10.0,
+        0.0,
+    );
+    let port_row = adw::SpinRow::builder()
+        .title("Peer Listening Port")
+        .subtitle("0 means random port")
+        .adjustment(&port_adj)
+        .digits(0)
+        .build();
+
+    conn_group.add(&port_row);
+    network_page.add(&conn_group);
+
     let queue_group = adw::PreferencesGroup::builder()
         .title("Transfer Queue")
         .build();
@@ -252,6 +274,17 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
     prefs.add(&logging_page);
 
     // Wire limits changes
+    let storage_port = storage.clone();
+    let parent_clone_port = parent.clone();
+    port_adj.connect_value_changed(move |adj| {
+        let mut settings = storage_port.load_settings();
+        settings.pwp_port = adj.value() as u16;
+        if let Err(e) = storage_port.save_settings(&settings) {
+            log::warn!("Failed to save peer listening port: {}", e);
+            parent_clone_port.show_toast(&format!("Failed to save port: {}", e));
+        }
+    });
+
     let storage_dl = storage.clone();
     let parent_clone4 = parent.clone();
     dl_limit_adj.connect_value_changed(move |adj| {

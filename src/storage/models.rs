@@ -66,6 +66,7 @@ pub struct AppSettings {
     pub global_download_limit: i32,
     pub global_upload_limit: i32,
     pub seeding_ratio_limit: f64,
+    pub pwp_port: u16,
 }
 
 impl Default for AppSettings {
@@ -87,6 +88,7 @@ impl Default for AppSettings {
             global_download_limit: 0,
             global_upload_limit: 0,
             seeding_ratio_limit: 1.0,
+            pwp_port: 0,
         }
     }
 }
