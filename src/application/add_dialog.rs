@@ -382,6 +382,18 @@ impl RillAddDialog {
                 .and_then(|s| s.to_str())
                 .unwrap_or("torrent")
                 .to_string();
+
+            // Resolve the real torrent name from metadata and, when it differs
+            // from the filename stem, copy the .torrent file to a path named
+            // after the real name.  mtorrent uses the .torrent filename stem to
+            // name the download subfolder, so this ensures the folder on disk
+            // matches the real torrent name.
+            let config_dir = engine.borrow().config_dir().clone();
+            let (name, path_str) = resolve_torrent_file_path(file_path, &config_dir)
+                .unwrap_or_else(|| {
+                    (name, file_path.to_string_lossy().to_string())
+                });
+
             let dir = download_dir.unwrap_or_else(|| {
                 file_path
                     .parent()
@@ -390,7 +402,6 @@ impl RillAddDialog {
             });
             let engine_clone = engine.clone();
             let tx_clone = tx.clone();
-            let path_str = file_path.to_string_lossy().to_string();
             let window_weak = self.transient_for()
                 .and_then(|t| t.downcast::<crate::application::RillWindow>().ok());
             glib::spawn_future_local(async move {
@@ -452,5 +463,67 @@ fn extract_name_from_uri(uri: &str) -> String {
     } else {
         let name = uri.rsplit('/').next().unwrap_or(uri);
         name.to_string()
+    }
+}
+
+/// Parses a `.torrent` file, extracts the real name from `info.name`,
+/// and — when that name differs from the filename stem — copies the
+/// file to `config_dir/torrents/<real_name>.torrent`.
+///
+/// Returns `(real_name, path_to_use)` on success.  The caller should
+/// pass the returned path to the engine so mtorrent creates a download
+/// subfolder matching the real torrent name.
+fn resolve_torrent_file_path(
+    file_path: &PathBuf,
+    config_dir: &PathBuf,
+) -> Option<(String, String)> {
+    use mtorrent::utils::re_exports::mtorrent_core::input::Metainfo;
+
+    let meta = Metainfo::from_file(file_path).ok()?;
+    let real_name = meta.name().filter(|n| !n.is_empty())?;
+
+    let original_stem = file_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    // If the filename already matches, no copy is needed.
+    if real_name == original_stem {
+        return Some((real_name.to_string(), file_path.to_string_lossy().to_string()));
+    }
+
+    // Sanitise the real name for use as a filename.
+    // Only strip characters that are actually invalid/problematic on
+    // modern filesystems — preserves Unicode (Cyrillic, CJK, etc.).
+    let safe_name: String = real_name
+        .chars()
+        .map(|c| match c {
+            '/' | '\0' | '\\' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect::<String>()
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let safe_name = if safe_name.is_empty() { "torrent".to_string() } else { safe_name };
+
+    let torrents_dir = config_dir.join("torrents");
+    let _ = std::fs::create_dir_all(&torrents_dir);
+    let new_path = torrents_dir.join(format!("{}.torrent", safe_name));
+
+    match std::fs::copy(file_path, &new_path) {
+        Ok(_) => {
+            log::info!(
+                "Copied .torrent file to {:?} (real name: '{}')",
+                new_path, real_name
+            );
+            Some((real_name.to_string(), new_path.to_string_lossy().to_string()))
+        }
+        Err(e) => {
+            log::warn!("Failed to copy .torrent file for rename: {}", e);
+            // Still return the real name even if copy failed.
+            Some((real_name.to_string(), file_path.to_string_lossy().to_string()))
+        }
     }
 }
