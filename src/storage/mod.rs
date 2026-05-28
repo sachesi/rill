@@ -7,7 +7,7 @@ pub use db::Database;
 pub use models::{AppSettings, SavedTorrent};
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Thread-safe storage handle
 #[derive(Clone, Debug)]
@@ -24,21 +24,23 @@ impl Storage {
         })
     }
 
+    /// Acquire the database guard, recovering from a poisoned mutex instead of
+    /// panicking. A panic in one operation must not cascade into every later one.
+    fn db(&self) -> MutexGuard<'_, Database> {
+        self.db.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Load all torrents from database
     pub fn load_torrents(&self) -> Result<Vec<SavedTorrent>, String> {
         log::info!("Loading all torrents");
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .load_torrents()
             .map_err(|e| format!("Failed to load torrents: {}", e))
     }
 
     /// Save or update a torrent
     pub fn save_torrent(&self, torrent: &SavedTorrent) -> Result<(), String> {
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .save_torrent(torrent)
             .map_err(|e| format!("Failed to save torrent: {}", e))
     }
@@ -54,9 +56,7 @@ impl Storage {
         downloaded_pieces: u64,
     ) -> Result<(), String> {
         let now = chrono::Utc::now().timestamp();
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .update_torrent_state(info_hash, state, downloaded, total, total_pieces, downloaded_pieces, now)
             .map_err(|e| format!("Failed to update torrent: {}", e))
     }
@@ -64,50 +64,45 @@ impl Storage {
     /// Mark torrent as completed
     pub fn mark_completed(&self, info_hash: &str) -> Result<(), String> {
         let now = chrono::Utc::now().timestamp();
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .mark_completed(info_hash, now)
             .map_err(|e| format!("Failed to mark completed: {}", e))
     }
 
     /// Delete a torrent
     pub fn delete_torrent(&self, info_hash: &str) -> Result<(), String> {
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .delete_torrent(info_hash)
             .map_err(|e| format!("Failed to delete torrent: {}", e))
     }
 
     /// Update torrent sequential flag
     pub fn update_torrent_sequential(&self, info_hash: &str, sequential: bool) -> Result<(), String> {
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .update_torrent_sequential(info_hash, sequential)
             .map_err(|e| format!("Failed to update torrent sequential flag: {}", e))
     }
 
     /// Pause all downloading torrents
     pub fn pause_all_torrents(&self) -> Result<(), String> {
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .pause_all_torrents()
             .map_err(|e| format!("Failed to pause all torrents: {}", e))
     }
 
     /// Load app settings
     pub fn load_settings(&self) -> AppSettings {
-        self.db.lock().unwrap().load_settings()
+        self.db().load_settings()
+    }
+
+    /// Read just the configured PWP port without loading every setting.
+    pub fn pwp_port(&self) -> u16 {
+        self.db().get_pwp_port()
     }
 
     /// Save app settings
     pub fn save_settings(&self, settings: &AppSettings) -> Result<(), String> {
-        self.db
-            .lock()
-            .unwrap()
+        self.db()
             .save_settings(settings)
             .map_err(|e| format!("Failed to save settings: {}", e))
     }

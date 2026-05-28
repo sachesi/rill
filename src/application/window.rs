@@ -72,6 +72,9 @@ mod imp {
         pub storage: RefCell<Option<Storage>>,
         pub tx: RefCell<Option<Sender<UiEvent>>>,
         pub rows: RefCell<HashMap<String, RillRow>>,
+        /// Last state persisted per torrent, to skip redundant DB writes on the
+        /// UI thread. Tuple: (state, downloaded, total, total_pieces, downloaded_pieces).
+        pub last_persisted: RefCell<HashMap<String, (String, u64, u64, u64, u64)>>,
         pub info_dialogs: RefCell<HashMap<String, Rc<RillInfoDialog>>>,
         pub deleted_torrents: RefCell<std::collections::HashSet<String>>,
         pub selection_mode: RefCell<bool>,
@@ -651,6 +654,7 @@ impl RillWindow {
                 return;
             }
         }
+        self.imp().last_persisted.borrow_mut().remove(info_hash);
 
         let row_opt = self.imp().rows.borrow_mut().remove(info_hash);
         if let Some(row) = row_opt
@@ -702,14 +706,6 @@ impl RillWindow {
                 Some(w) => w,
                 None => return false,
             };
-            let engine = match window.imp().engine.borrow().as_ref().cloned() {
-                Some(e) => e,
-                None => return false,
-            };
-            let tx = match window.imp().tx.borrow().as_ref().cloned() {
-                Some(t) => t,
-                None => return false,
-            };
 
             let uris: String = value.get().unwrap_or_default();
             if let Some(path) = uris.lines().next() {
@@ -719,17 +715,7 @@ impl RillWindow {
                 if let Some(ext) = path.extension()
                     && ext == "torrent"
                 {
-                    let name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Unknown")
-                        .to_string();
-                    let dir = dirs_next::download_dir().unwrap_or_else(|| PathBuf::from("."));
-                    glib::spawn_future_local(async move {
-                        engine
-                            .borrow_mut()
-                            .start(name, path.to_string_lossy().to_string(), dir, false, tx);
-                    });
+                    window.show_add_dialog_with_file(&path);
                     return true;
                 }
             }
@@ -1301,6 +1287,22 @@ impl RillWindow {
                 TorrentUiState::Completed => "completed",
                 TorrentUiState::Error => "error",
             };
+
+            // Coalesce: snapshots arrive ~once per second per torrent and this
+            // write runs on the GTK main thread. Skip when nothing the DB tracks
+            // changed since the last persisted value (the final stored state is
+            // identical either way).
+            let snapshot = (
+                state_str.to_string(),
+                update.downloaded,
+                update.total,
+                update.total_pieces as u64,
+                update.downloaded_pieces as u64,
+            );
+            if self.imp().last_persisted.borrow().get(&update.info_hash) == Some(&snapshot) {
+                return;
+            }
+
             if let Err(e) =
                 storage.update_torrent_state(
                     &update.info_hash,
@@ -1312,6 +1314,8 @@ impl RillWindow {
                 )
             {
                 log::warn!("Failed to save torrent state: {}", e);
+            } else {
+                self.imp().last_persisted.borrow_mut().insert(update.info_hash.clone(), snapshot);
             }
         }
     }

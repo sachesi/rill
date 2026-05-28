@@ -15,6 +15,7 @@ pub struct GtkListener {
     name: String,
     uri: String,
     output_dir: PathBuf,
+    #[allow(dead_code)]
     config_dir: PathBuf,
     last_downloaded: u64,
     last_time: Option<std::time::Instant>,
@@ -23,7 +24,6 @@ pub struct GtkListener {
     total_pieces: usize,
     downloaded_pieces: usize,
     sequential: Arc<std::sync::atomic::AtomicBool>,
-    real_info_hash: Option<[u8; 20]>,
     info_hash_resolved: bool,
 }
 
@@ -56,32 +56,23 @@ impl GtkListener {
             total_pieces: 0,
             downloaded_pieces: 0,
             sequential,
-            real_info_hash: None,
             info_hash_resolved: false,
         }
     }
 }
 
-fn resolve_real_info_hash(config_dir: &std::path::Path, uri: &str) -> Option<[u8; 20]> {
+/// Resolves the display name from the torrent metadata when the URI points at a
+/// `.torrent` file. Magnet links return `None` (the caller already extracted the
+/// `dn` parameter; the real name only arrives once metadata is downloaded).
+fn resolve_real_name(uri: &str) -> Option<String> {
     use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
     use std::str::FromStr;
 
-    if let Ok(magnet) = MagnetLink::from_str(uri) {
-        return Some(*magnet.info_hash());
+    if MagnetLink::from_str(uri).is_ok() {
+        return None;
     }
     if let Ok(meta) = Metainfo::from_file(std::path::Path::new(uri)) {
-        return Some(*meta.info_hash());
-    }
-    
-    if let Ok(entries) = std::fs::read_dir(config_dir) {
-        for entry in entries.filter_map(Result::ok) {
-            let p = entry.path();
-            if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("torrent") {
-                if let Ok(meta) = Metainfo::from_file(&p) {
-                    return Some(*meta.info_hash());
-                }
-            }
-        }
+        return meta.name().map(|s| s.to_string());
     }
     None
 }
@@ -97,7 +88,11 @@ impl StateListener for GtkListener {
         self.downloaded_pieces = downloaded_pieces;
 
         if !self.info_hash_resolved {
-            self.real_info_hash = resolve_real_info_hash(&self.config_dir, &self.uri);
+            // Override the filename-stem name with the real name from the
+            // .torrent metadata's info.name field when available.
+            if let Some(name) = resolve_real_name(&self.uri).filter(|n| !n.is_empty()) {
+                self.name = name;
+            }
             self.info_hash_resolved = true;
         }
 
@@ -156,11 +151,13 @@ impl StateListener for GtkListener {
         };
 
         let mut peers_list = Vec::new();
+        let mut speed_up = 0u64;
         for (addr, p_state) in &snapshot.peers {
             let client = p_state.extensions.as_ref()
                 .and_then(|ext| ext.client_type.as_deref())
                 .unwrap_or("n/a")
                 .to_string();
+            speed_up += p_state.upload.last_bitrate_bps as u64;
             peers_list.push(crate::engine::PeerInfo {
                 address: addr.to_string(),
                 client,
@@ -178,7 +175,7 @@ impl StateListener for GtkListener {
             total,
             peers,
             speed_down,
-            speed_up: 0,
+            speed_up,
             output_dir: self.output_dir.clone(),
             uri: self.uri.clone(),
             peers_list,

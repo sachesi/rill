@@ -193,8 +193,8 @@ impl TorrentEngine {
                                                 .await;
                                         }
                                     } else {
-                                        let dl = *dl_clone.lock().unwrap();
-                                        let tot = *tot_clone.lock().unwrap();
+                                        let dl = *dl_clone.lock().unwrap_or_else(|e| e.into_inner());
+                                        let tot = *tot_clone.lock().unwrap_or_else(|e| e.into_inner());
                                         let _ = ui_tx
                                             .send(UiEvent::Update(UiUpdate {
                                                 info_hash,
@@ -235,7 +235,7 @@ impl TorrentEngine {
 
     pub fn start(&self, name: String, uri: String, output_dir: PathBuf, sequential: bool, ui_tx: Sender<UiEvent>) -> String {
         let info_hash = hash_uri(&uri);
-        let mut map = self.active.lock().unwrap();
+        let mut map = self.active.lock().unwrap_or_else(|e| e.into_inner());
 
         if map.contains_key(&info_hash) {
             log::info!("Torrent already active: {} ({})", name, info_hash);
@@ -285,7 +285,7 @@ impl TorrentEngine {
             cancel_rx,
             ui_tx,
             sequential: seq,
-            pwp_port: self.storage.load_settings().pwp_port,
+            pwp_port: self.storage.pwp_port(),
         });
         info_hash
     }
@@ -293,7 +293,7 @@ impl TorrentEngine {
     /// Adds a torrent in a paused state without starting the download.
     pub fn add_paused(&self, name: String, uri: String, output_dir: PathBuf, sequential: bool, ui_tx: Sender<UiEvent>) -> String {
         let info_hash = hash_uri(&uri);
-        let mut map = self.saved.lock().unwrap();
+        let mut map = self.saved.lock().unwrap_or_else(|e| e.into_inner());
 
         if map.contains_key(&info_hash) {
             log::info!("Torrent already saved/paused: {} ({})", name, info_hash);
@@ -338,7 +338,7 @@ impl TorrentEngine {
 
     pub fn add_paused_silent(&self, name: String, uri: String, output_dir: PathBuf, sequential: bool, ui_tx: Sender<UiEvent>) -> String {
         let info_hash = hash_uri(&uri);
-        let mut map = self.saved.lock().unwrap();
+        let mut map = self.saved.lock().unwrap_or_else(|e| e.into_inner());
 
         if map.contains_key(&info_hash) {
             log::info!("Torrent already saved/paused: {} ({})", name, info_hash);
@@ -365,20 +365,20 @@ impl TorrentEngine {
     /// Stops and removes the torrent from the engine entirely.
     pub fn stop(&self, info_hash: &str) {
         log::info!("Stopping torrent: {}", info_hash);
-        self.active.lock().unwrap().remove(info_hash);
-        self.saved.lock().unwrap().remove(info_hash);
+        self.active.lock().unwrap_or_else(|e| e.into_inner()).remove(info_hash);
+        self.saved.lock().unwrap_or_else(|e| e.into_inner()).remove(info_hash);
     }
 
     /// Sets the sequential download flag for a torrent.
     pub fn set_sequential(&self, info_hash: &str, sequential: bool) {
         log::info!("Toggling sequential for {}: {}", info_hash, sequential);
-        let active_map = self.active.lock().unwrap();
+        let active_map = self.active.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(torrent) = active_map.get(info_hash) {
             torrent.sequential.store(sequential, std::sync::atomic::Ordering::Relaxed);
             return;
         }
         drop(active_map);
-        let saved_map = self.saved.lock().unwrap();
+        let saved_map = self.saved.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(torrent) = saved_map.get(info_hash) {
             torrent.sequential.store(sequential, std::sync::atomic::Ordering::Relaxed);
         }
@@ -386,8 +386,8 @@ impl TorrentEngine {
 
     /// Toggles the torrent between paused and downloading states.
     pub fn toggle(&self, info_hash: &str) {
-        let mut active_map = self.active.lock().unwrap();
-        let mut saved_map = self.saved.lock().unwrap();
+        let mut active_map = self.active.lock().unwrap_or_else(|e| e.into_inner());
+        let mut saved_map = self.saved.lock().unwrap_or_else(|e| e.into_inner());
         if active_map.contains_key(info_hash) {
             log::info!("Pausing torrent: {}", info_hash);
             if let Some(mut torrent) = active_map.remove(info_hash) {
@@ -397,9 +397,15 @@ impl TorrentEngine {
             }
         } else if let Some(torrent) = saved_map.remove(info_hash) {
             log::info!("Resuming torrent: {}", info_hash);
-            // Resume: move from saved to active, restart download
-            drop(active_map);
+            // Resume: move from saved to active, restart download.
+            // Re-acquire `active` under one lock spanning the check-and-insert so a
+            // concurrent start/toggle for the same hash cannot double-dispatch.
             drop(saved_map);
+            let mut active_map2 = active_map;
+            if active_map2.contains_key(info_hash) {
+                log::info!("Torrent already active during resume, skipping: {}", info_hash);
+                return;
+            }
             let canceller = Arc::new(());
             let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
             let ui_tx = torrent.ui_tx.clone();
@@ -413,9 +419,8 @@ impl TorrentEngine {
                 cancel_rx,
                 ui_tx: ui_tx.clone(),
                 sequential: Arc::clone(&seq),
-                pwp_port: self.storage.load_settings().pwp_port,
+                pwp_port: self.storage.pwp_port(),
             });
-            let mut active_map2 = self.active.lock().unwrap();
             active_map2.insert(info_hash.to_string(), ActiveTorrent {
                 canceller: Some(canceller),
                 cancel_tx: Some(cancel_tx),
@@ -431,8 +436,8 @@ impl TorrentEngine {
     /// Pauses all currently active torrents.
     pub fn pause_all(&self) {
         log::info!("Pausing all active torrents in engine");
-        let mut active_map = self.active.lock().unwrap();
-        let mut saved_map = self.saved.lock().unwrap();
+        let mut active_map = self.active.lock().unwrap_or_else(|e| e.into_inner());
+        let mut saved_map = self.saved.lock().unwrap_or_else(|e| e.into_inner());
         let active_keys: Vec<String> = active_map.keys().cloned().collect();
         for info_hash in active_keys {
             if let Some(mut torrent) = active_map.remove(&info_hash) {
@@ -445,23 +450,28 @@ impl TorrentEngine {
 
     /// Returns true if the torrent is currently active and downloading/seeding.
     pub fn is_active(&self, info_hash: &str) -> bool {
-        self.active.lock().unwrap().contains_key(info_hash)
+        self.active.lock().unwrap_or_else(|e| e.into_inner()).contains_key(info_hash)
     }
 
     /// Returns true if the torrent is paused.
     pub fn is_paused(&self, info_hash: &str) -> bool {
-        self.saved.lock().unwrap().contains_key(info_hash)
+        self.saved.lock().unwrap_or_else(|e| e.into_inner()).contains_key(info_hash)
     }
 
     /// Retrieves basic active state information about a torrent.
     pub fn saved_torrent(&self, info_hash: &str) -> Option<(String, PathBuf)> {
-        let map = self.active.lock().unwrap();
+        let map = self.active.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(t) = map.get(info_hash) {
             return Some((t.uri.clone(), t.output_dir.clone()));
         }
         drop(map);
-        let saved_map = self.saved.lock().unwrap();
+        let saved_map = self.saved.lock().unwrap_or_else(|e| e.into_inner());
         saved_map.get(info_hash).map(|t| (t.uri.clone(), t.output_dir.clone()))
+    }
+
+    /// Returns the engine's config directory path.
+    pub fn config_dir(&self) -> &PathBuf {
+        &self.config_dir
     }
 }
 

@@ -295,6 +295,15 @@ impl Database {
         Ok(())
     }
 
+    /// Read just the PWP port setting (single query).
+    pub fn get_pwp_port(&self) -> u16 {
+        self.get_setting("pwp_port")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    }
+
     /// Load app settings from database
     pub fn load_settings(&self) -> AppSettings {
         let download_folder = self
@@ -308,26 +317,19 @@ impl Database {
                     .to_string()
             });
 
-        let mut window_width = self
+        let window_width = self
             .get_setting("window_width")
             .ok()
             .flatten()
             .and_then(|v| v.parse().ok())
             .unwrap_or(375);
 
-        let mut window_height = self
+        let window_height = self
             .get_setting("window_height")
             .ok()
             .flatten()
             .and_then(|v| v.parse().ok())
             .unwrap_or(480);
-
-        if window_width == 450 || window_width == 560 {
-            window_width = 375;
-        }
-        if window_height == 580 || window_height == 680 {
-            window_height = 480;
-        }
 
         let window_maximized = self
             .get_setting("window_maximized")
