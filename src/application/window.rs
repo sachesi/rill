@@ -691,7 +691,10 @@ impl RillWindow {
                 }
             }
 
-            glib::Propagation::Proceed
+            // Hide to the system tray instead of quitting; torrents keep running.
+            // The app stays alive via the hold guard and is reopened from the tray.
+            window.set_visible(false);
+            glib::Propagation::Stop
         });
     }
 
@@ -1248,6 +1251,7 @@ impl RillWindow {
                 total_pieces: torrent.total_pieces as usize,
                 downloaded_pieces: torrent.downloaded_pieces as usize,
                 sequential: torrent.sequential,
+                piece_map: Vec::new(),
             };
 
             if let Some(model) = self.imp().model.borrow().as_ref() {

@@ -19,6 +19,8 @@ mod imp {
         // Overview Tab Widgets
         pub state_lbl: RefCell<Option<gtk::Label>>,
         pub progress_bar: RefCell<Option<gtk::ProgressBar>>,
+        pub piece_bar: RefCell<Option<gtk::DrawingArea>>,
+        pub piece_map: Rc<RefCell<Vec<u8>>>,
         pub size_lbl: RefCell<Option<gtk::Label>>,
         pub speed_down_lbl: RefCell<Option<gtk::Label>>,
         pub speed_up_lbl: RefCell<Option<gtk::Label>>,
@@ -114,8 +116,44 @@ mod imp {
                 .css_classes(["thin"])
                 .build();
 
+            // Real piece-availability map (fragmentation), drawn from the live
+            // bitfield mtorrent persists. Hidden until a map is available.
+            let piece_bar = gtk::DrawingArea::builder()
+                .content_height(10)
+                .hexpand(true)
+                .visible(false)
+                .build();
+            piece_bar.add_css_class("rill-piece-bar");
+            {
+                let map = self.piece_map.clone();
+                piece_bar.set_draw_func(move |_area, cr, w, h| {
+                    let (w, h) = (w as f64, h as f64);
+                    // Track behind the segments.
+                    cr.set_source_rgba(0.5, 0.5, 0.5, 0.2);
+                    cr.rectangle(0.0, 0.0, w, h);
+                    let _ = cr.fill();
+
+                    let map = map.borrow();
+                    let n = map.len();
+                    if n == 0 {
+                        return;
+                    }
+                    let seg = w / n as f64;
+                    for (i, &v) in map.iter().enumerate() {
+                        if v == 0 {
+                            continue;
+                        }
+                        // Accent blue; alpha tracks partial availability of the segment.
+                        cr.set_source_rgba(0.21, 0.52, 0.89, v as f64 / 255.0);
+                        cr.rectangle(i as f64 * seg, 0.0, seg.ceil(), h);
+                        let _ = cr.fill();
+                    }
+                });
+            }
+
             let progress_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
             progress_box.append(&progress_bar);
+            progress_box.append(&piece_bar);
 
             let progress_clamp = adw::Clamp::builder()
                 .maximum_size(288)
@@ -345,6 +383,7 @@ mod imp {
             self.title_lbl.replace(Some(title_lbl));
             self.state_lbl.replace(Some(state_lbl));
             self.progress_bar.replace(Some(progress_bar));
+            self.piece_bar.replace(Some(piece_bar));
             self.size_lbl.replace(Some(size_lbl));
             self.speed_down_lbl.replace(Some(speed_down_lbl));
             self.speed_up_lbl.replace(Some(speed_up_lbl));
@@ -387,6 +426,10 @@ impl RillInfoDialog {
 
     fn progress_bar(&self) -> gtk::ProgressBar {
         self.imp().progress_bar.borrow().clone().unwrap()
+    }
+
+    fn piece_bar(&self) -> gtk::DrawingArea {
+        self.imp().piece_bar.borrow().clone().unwrap()
     }
 
     fn size_lbl(&self) -> gtk::Label {
@@ -508,6 +551,12 @@ impl RillInfoDialog {
         self.state_lbl().set_text(&state_text);
 
         self.progress_bar().set_fraction(progress);
+
+        // Update the real fragmentation map.
+        *self.imp().piece_map.borrow_mut() = update.piece_map.clone();
+        let piece_bar = self.piece_bar();
+        piece_bar.set_visible(!update.piece_map.is_empty());
+        piece_bar.queue_draw();
 
         let size_text = if update.total > 0 {
             format!(

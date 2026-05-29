@@ -9,6 +9,7 @@ use crate::model::TorrentModel;
 use crate::storage::{Storage, SavedTorrent};
 use super::RillWindow;
 use super::show_preferences;
+use super::tray::{self, TrayCommand};
 
 pub struct RillApplication {
     app: adw::Application,
@@ -18,6 +19,8 @@ pub struct RillApplication {
     model: Rc<RefCell<TorrentModel>>,
     storage: Storage,
     saved_torrents: Vec<SavedTorrent>,
+    // Keeps the application alive while the window is hidden to the tray.
+    _hold: gio::ApplicationHoldGuard,
 }
 
 impl RillApplication {
@@ -35,14 +38,18 @@ impl RillApplication {
 
         let app_self = Self {
             app: app.clone(),
-            engine: engine.clone(), 
+            engine: engine.clone(),
             model: model.clone(),
             storage: storage.clone(),
             saved_torrents,
+            _hold: app.hold(),
         };
 
         // Set up application-level actions
         app_self.setup_actions();
+
+        // System tray: drives show/quit while the window is hidden.
+        app_self.setup_tray();
         
         // Connect activate signal
         let storage_clone1 = storage.clone();
@@ -152,6 +159,7 @@ impl RillApplication {
                     .developer_name("sachesi")
                     .license_type(gtk::License::MitX11)
                     .comments("Minimalistic GTK4/Libadwaita BitTorrent client")
+                    .application_icon("com.github.sachesi.rill")
                     .build();
                 if let Some(window) = app.active_window() {
                     about.set_transient_for(Some(&window));
@@ -192,6 +200,28 @@ impl RillApplication {
         });
         self.app.add_action(&add_action);
         self.app.set_accels_for_action("app.add-torrent", &["<Control>n"]);
+    }
+
+    fn setup_tray(&self) {
+        let rx = tray::spawn();
+        let app_weak = self.app.downgrade();
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            let Some(app) = app_weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            while let Ok(cmd) = rx.try_recv() {
+                match cmd {
+                    TrayCommand::ShowWindow => {
+                        if let Some(window) = app.active_window() {
+                            window.set_visible(true);
+                            window.present();
+                        }
+                    }
+                    TrayCommand::QuitApp => app.quit(),
+                }
+            }
+            glib::ControlFlow::Continue
+        });
     }
 
     pub fn run(&self) -> glib::ExitCode {

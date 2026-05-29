@@ -33,6 +33,13 @@ fn main() {
         .expect("Failed to load GResource");
     gtk::gio::resources_register(&resource);
 
+    // Make the bundled app icon resolvable by name (works uninstalled too).
+    if let Some(display) = gtk::gdk::Display::default() {
+        gtk::IconTheme::for_display(&display)
+            .add_resource_path("/com/github/sachesi/rill/icons");
+    }
+    gtk::Window::set_default_icon_name("com.github.sachesi.rill");
+
     let local_data_dir = dirs_next::data_local_dir()
         .or_else(dirs_next::data_dir)
         .or_else(dirs_next::config_dir)

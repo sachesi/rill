@@ -25,6 +25,9 @@ pub struct GtkListener {
     downloaded_pieces: usize,
     sequential: Arc<std::sync::atomic::AtomicBool>,
     info_hash_resolved: bool,
+    /// Directory holding the persisted `.mtorrent` piece-state file and the real
+    /// 20-byte info hash keying it. Resolved once from the URI + output dir.
+    state_target: Option<(PathBuf, [u8; 20])>,
 }
 
 impl GtkListener {
@@ -57,8 +60,77 @@ impl GtkListener {
             downloaded_pieces: 0,
             sequential,
             info_hash_resolved: false,
+            state_target: None,
         }
     }
+}
+
+/// Number of segments in the downsampled fragmentation map sent to the UI.
+const PIECE_MAP_BUCKETS: usize = 200;
+
+/// Resolves the directory of the persisted `.mtorrent` piece-state file and the
+/// real info hash that keys it, mirroring how mtorrent derives the content dir
+/// (`output_dir/<metainfo file stem>` for files, `output_dir/<magnet name>` for
+/// magnets).
+fn resolve_state_target(uri: &str, output_dir: &std::path::Path) -> Option<(PathBuf, [u8; 20])> {
+    use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
+    use std::str::FromStr;
+
+    let path = std::path::Path::new(uri);
+    if path.is_file() {
+        let meta = Metainfo::from_file(path).ok()?;
+        let stem = path.file_stem()?;
+        Some((output_dir.join(stem), *meta.info_hash()))
+    } else if let Ok(magnet) = MagnetLink::from_str(uri) {
+        let name = magnet.name().unwrap_or("unnamed");
+        Some((output_dir.join(name), *magnet.info_hash()))
+    } else {
+        None
+    }
+}
+
+/// Name of the bencoded progress file mtorrent rewrites in the content dir on
+/// every snapshot interval (a dictionary of `{info_hash: bitfield}`).
+const STATE_FILENAME: &str = ".mtorrent";
+
+/// Reads the live piece bitfield mtorrent persists each interval and downsamples
+/// it to a fixed-width fill map (0..=255 per segment, in piece order). The
+/// bitfield is big-endian (piece 0 = most significant bit of the first byte).
+fn build_piece_map(state_dir: &std::path::Path, info_hash: &[u8; 20], total_pieces: usize) -> Vec<u8> {
+    use mtorrent::utils::re_exports::mtorrent_utils::benc::Element;
+
+    if total_pieces == 0 {
+        return Vec::new();
+    }
+    let Ok(buf) = std::fs::read(state_dir.join(STATE_FILENAME)) else {
+        return Vec::new();
+    };
+    let Ok(Element::Dictionary(mut root)) = Element::from_bytes(&buf) else {
+        return Vec::new();
+    };
+    let Some(Element::ByteString(bytes)) = root.remove(&Element::ByteString(info_hash.to_vec()))
+    else {
+        return Vec::new();
+    };
+
+    let has_piece = |i: usize| -> bool {
+        let byte = i / 8;
+        byte < bytes.len() && (bytes[byte] >> (7 - (i % 8))) & 1 == 1
+    };
+
+    let n = total_pieces;
+    let buckets = PIECE_MAP_BUCKETS.min(n);
+    let mut out = vec![0u8; buckets];
+    for (b, slot) in out.iter_mut().enumerate() {
+        let start = b * n / buckets;
+        let end = ((b + 1) * n / buckets).max(start + 1).min(n);
+        let have = (start..end).filter(|&i| has_piece(i)).count();
+        let tot = end - start;
+        if tot > 0 {
+            *slot = (have * 255 / tot) as u8;
+        }
+    }
+    out
 }
 
 /// Resolves the display name from the torrent metadata when the URI points at a
@@ -93,6 +165,7 @@ impl StateListener for GtkListener {
             if let Some(name) = resolve_real_name(&self.uri).filter(|n| !n.is_empty()) {
                 self.name = name;
             }
+            self.state_target = resolve_state_target(&self.uri, &self.output_dir);
             self.info_hash_resolved = true;
         }
 
@@ -113,6 +186,7 @@ impl StateListener for GtkListener {
                 total_pieces,
                 downloaded_pieces,
                 sequential: is_sequential,
+                piece_map: Vec::new(),
             }));
             return ControlFlow::Break(());
         }
@@ -167,6 +241,11 @@ impl StateListener for GtkListener {
             });
         }
 
+        let piece_map = match &self.state_target {
+            Some((dir, ih)) => build_piece_map(dir, ih, total_pieces),
+            None => Vec::new(),
+        };
+
         let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
             info_hash: self.info_hash.clone(),
             name: self.name.clone(),
@@ -182,6 +261,7 @@ impl StateListener for GtkListener {
             total_pieces,
             downloaded_pieces,
             sequential: is_sequential,
+            piece_map,
         }));
         ControlFlow::Continue(())
     }

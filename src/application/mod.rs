@@ -4,6 +4,7 @@ mod window;
 mod preferences;
 mod torrent_row;
 mod info_dialog;
+mod tray;
 
 pub use add_dialog::{RillAddDialog, AddMode};
 pub use app::RillApplication;

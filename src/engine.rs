@@ -37,6 +37,9 @@ pub struct UiUpdate {
     pub total_pieces: usize,
     pub downloaded_pieces: usize,
     pub sequential: bool,
+    /// Downsampled piece-availability map (0..=255 fill per segment, in piece
+    /// order from start to finish). Empty when no real state is available.
+    pub piece_map: Vec<u8>,
 }
 
 /// Represents the current user-facing state of a torrent.
@@ -135,6 +138,14 @@ impl TorrentEngine {
                                 let info_hash = hash_uri(&uri);
 
                                 tokio::task::spawn_local(async move {
+                                    // Ensure the download dir exists; mtorrent's magnet
+                                    // preliminary stage writes the fetched metainfo into
+                                    // output_dir before content storage is created, which
+                                    // fails with ENOENT if the dir is missing.
+                                    if let Err(e) = std::fs::create_dir_all(&output_dir) {
+                                        log::warn!("Failed to create output dir {:?}: {}", output_dir, e);
+                                    }
+
                                     let downloaded_bytes = Arc::new(Mutex::new(0u64));
                                     let total_bytes = Arc::new(Mutex::new(0u64));
                                     let dl_clone = Arc::clone(&downloaded_bytes);
@@ -157,7 +168,10 @@ impl TorrentEngine {
                                         output_dir: output_dir.clone(),
                                         config_dir: cd,
                                         use_upnp: false,
-                                        pwp_port: Some(pwp_port),
+                                        // Port 0 means "unset": let mtorrent pick a stable port
+                                        // (port_from_hash) instead of binding an ephemeral one and
+                                        // announcing port 0 to trackers.
+                                        pwp_port: (pwp_port != 0).then_some(pwp_port),
                                         bind_interface: None,
                                     };
                                     let ctx = app::main::Context {
@@ -211,6 +225,7 @@ impl TorrentEngine {
                                                 total_pieces: 0,
                                                 downloaded_pieces: 0,
                                                 sequential: is_seq,
+                                                piece_map: Vec::new(),
                                             }))
                                             .await;
                                     }
@@ -275,6 +290,7 @@ impl TorrentEngine {
             total_pieces: 0,
             downloaded_pieces: 0,
             sequential,
+            piece_map: Vec::new(),
         }));
 
         let _ = self.cmd_tx.send(EngineCmd::Start {
@@ -331,6 +347,7 @@ impl TorrentEngine {
             total_pieces: 0,
             downloaded_pieces: 0,
             sequential,
+            piece_map: Vec::new(),
         }));
 
         info_hash

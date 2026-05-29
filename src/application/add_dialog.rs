@@ -482,20 +482,29 @@ fn resolve_torrent_file_path(
     let meta = Metainfo::from_file(file_path).ok()?;
     let real_name = meta.name().filter(|n| !n.is_empty())?;
 
+    // For single-file torrents the name is the file name (e.g. "foo.rar"), and
+    // mtorrent names the download subfolder after the .torrent filename stem.
+    // Strip the trailing extension so the folder isn't named "foo.rar".
+    // Multi-file torrents have a directory name — leave it untouched.
+    let folder_stem: &str = if meta.files().is_none() {
+        std::path::Path::new(real_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(real_name)
+    } else {
+        real_name
+    };
+
     let original_stem = file_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("");
 
-    // If the filename already matches, no copy is needed.
-    if real_name == original_stem {
-        return Some((real_name.to_string(), file_path.to_string_lossy().to_string()));
-    }
-
-    // Sanitise the real name for use as a filename.
+    // Sanitise the folder stem for use as a filename.
     // Only strip characters that are actually invalid/problematic on
     // modern filesystems — preserves Unicode (Cyrillic, CJK, etc.).
-    let safe_name: String = real_name
+    let safe_name: String = folder_stem
         .chars()
         .map(|c| match c {
             '/' | '\0' | '\\' => '_',
@@ -507,6 +516,11 @@ fn resolve_torrent_file_path(
         .trim_end_matches('.')
         .to_string();
     let safe_name = if safe_name.is_empty() { "torrent".to_string() } else { safe_name };
+
+    // If the filename stem already matches, no copy is needed.
+    if safe_name == original_stem {
+        return Some((real_name.to_string(), file_path.to_string_lossy().to_string()));
+    }
 
     let torrents_dir = config_dir.join("torrents");
     let _ = std::fs::create_dir_all(&torrents_dir);
