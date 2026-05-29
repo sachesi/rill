@@ -1,10 +1,12 @@
 [Desktop Entry]
 Name=Rill
-Comment=Minimalistic BitTorrent Client
-GenericName=BitTorrent Client
+Comment=Minimalistic BitTorrent client for GNOME
 Exec=rill %U
 Icon=com.github.sachesi.rill
 Terminal=false
 Type=Application
-Categories=Network;FileTransfer;P2P;
-MimeType=x-scheme-handler/magnet;application/x-bittorrent;
+Categories=Network;P2P;
+MimeType=application/x-bittorrent;x-scheme-handler/magnet;
+StartupNotify=true
+NoDisplay=false
+StartupWMClass=com.github.sachesi.rill

@@ -52,7 +52,7 @@ fix: ## Apply rustfmt
 
 DESKTOP_SRC  := resources/rill.desktop
 DESKTOP_NAME := com.github.sachesi.rill.desktop
-ICON_SRC     := resources/icons/com.github.sachesi.rill.svg
+ICON_SRC     := resources/icons/hicolor/scalable/apps/com.github.sachesi.rill.svg
 ICON_NAME    := com.github.sachesi.rill.svg
 
 target/release/rill:
@@ -67,6 +67,7 @@ install: target/release/rill ## Install under $(PREFIX) (set DESTDIR for staging
 	install -d $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
 	install -m 644 $(ICON_SRC) $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$(ICON_NAME)
 	-gtk-update-icon-cache -f -t $(DESTDIR)$(PREFIX)/share/icons/hicolor
+	-update-desktop-database $(DESTDIR)$(PREFIX)/share/applications
 	@echo "✓ Installed. Run 'rill' to start."
 	@echo "  Uninstall: make uninstall"
 
@@ -76,4 +77,5 @@ uninstall: ## Remove installed files
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/$(DESKTOP_NAME)
 	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$(ICON_NAME)
 	-gtk-update-icon-cache -f -t $(DESTDIR)$(PREFIX)/share/icons/hicolor
+	-update-desktop-database $(DESTDIR)$(PREFIX)/share/applications
 	@echo "✓ Uninstalled."
