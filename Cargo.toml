@@ -29,5 +29,18 @@ ksni = { version = "0.3.4", default-features = false, features = ["blocking", "a
 [build-dependencies]
 glib-build-tools = "0.20"
 
+# mtorrent (0.5.2) ships a `debug_assert!(false, "AvailabilityReporter overflow")`
+# that fires whenever the per-peer "Have" broadcast lags under fast downloads, plus
+# a debug-only panic hook in `single_torrent` that turns any panic into
+# `process::exit(1)`. Together they crash dev builds mid-download. Disabling
+# debug-assertions for just these crates flips `cfg(debug_assertions)` off there,
+# compiling out both the assert and the exit hook, while keeping rill's own
+# debug-assertions intact.
+[profile.dev.package.mtorrent]
+debug-assertions = false
+
+[profile.dev.package.mtorrent-core]
+debug-assertions = false
+
 [patch.crates-io]
 mtorrent-core = { path = "third_party/mtorrent-core" }
