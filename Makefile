@@ -54,6 +54,8 @@ DESKTOP_SRC  := resources/rill.desktop
 DESKTOP_NAME := com.github.sachesi.rill.desktop
 ICON_SRC     := resources/icons/hicolor/scalable/apps/com.github.sachesi.rill.svg
 ICON_NAME    := com.github.sachesi.rill.svg
+SYM_ICON_SRC  := resources/icons/hicolor/symbolic/apps/com.github.sachesi.rill-symbolic.svg
+SYM_ICON_NAME := com.github.sachesi.rill-symbolic.svg
 
 target/release/rill:
 	$(CARGO) build --release
@@ -66,6 +68,8 @@ install: target/release/rill ## Install under $(PREFIX) (set DESTDIR for staging
 	install -m 644 $(DESKTOP_SRC) $(DESTDIR)$(PREFIX)/share/applications/$(DESKTOP_NAME)
 	install -d $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
 	install -m 644 $(ICON_SRC) $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$(ICON_NAME)
+	install -d $(DESTDIR)$(PREFIX)/share/icons/hicolor/symbolic/apps
+	install -m 644 $(SYM_ICON_SRC) $(DESTDIR)$(PREFIX)/share/icons/hicolor/symbolic/apps/$(SYM_ICON_NAME)
 	-gtk-update-icon-cache -f -t $(DESTDIR)$(PREFIX)/share/icons/hicolor
 	-update-desktop-database $(DESTDIR)$(PREFIX)/share/applications
 	@echo "✓ Installed. Run 'rill' to start."
@@ -76,6 +80,7 @@ uninstall: ## Remove installed files
 	rm -f $(DESTDIR)$(PREFIX)/bin/rill
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/$(DESKTOP_NAME)
 	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$(ICON_NAME)
+	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/symbolic/apps/$(SYM_ICON_NAME)
 	-gtk-update-icon-cache -f -t $(DESTDIR)$(PREFIX)/share/icons/hicolor
 	-update-desktop-database $(DESTDIR)$(PREFIX)/share/applications
 	@echo "✓ Uninstalled."

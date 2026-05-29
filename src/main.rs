@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use gtk::prelude::*;
 use mtorrent as mt;
 use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 
@@ -39,6 +40,27 @@ fn main() {
             .add_resource_path("/com/github/sachesi/rill/icons");
     }
     gtk::Window::set_default_icon_name("com.github.sachesi.rill");
+
+    // Build and register the application before any heavy initialization so we
+    // can enforce a single running instance. Registering claims the application
+    // id on the session bus; a second launch becomes "remote" and must forward
+    // its activation (or magnet/file arguments) to the primary instance and exit
+    // before opening the database or binding the DHT port.
+    let app = adw::Application::builder()
+        .application_id("com.github.sachesi.rill")
+        .flags(gtk::gio::ApplicationFlags::HANDLES_OPEN)
+        .build();
+    if let Err(e) = app.register(gtk::gio::Cancellable::NONE) {
+        log::error!("Failed to register application: {}", e);
+    }
+    if app.is_remote() {
+        // A primary instance already owns the id. Hand control to run(), which
+        // forwards this launch's command line (a magnet/file argument, or a bare
+        // activation) to the primary over the bus and exits — flushing the call
+        // before the process terminates. No heavy init runs here.
+        log::info!("Another instance is already running; forwarding launch to it");
+        std::process::exit(app.run().into());
+    }
 
     let local_data_dir = dirs_next::data_local_dir()
         .or_else(dirs_next::data_dir)
@@ -131,6 +153,6 @@ fn main() {
     });
     log::info!("Loaded {} saved torrents from database", saved_torrents.len());
 
-    let app = RillApplication::new(engine, storage, saved_torrents);
-    std::process::exit(app.run().into());
+    let rill = RillApplication::new(app, engine, storage, saved_torrents);
+    std::process::exit(rill.run().into());
 }

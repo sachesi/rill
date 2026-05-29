@@ -2,5 +2,6 @@
 <gresources>
   <gresource prefix="/com/github/sachesi/rill">
     <file compressed="true">icons/hicolor/scalable/apps/com.github.sachesi.rill.svg</file>
+    <file compressed="true">icons/hicolor/symbolic/apps/com.github.sachesi.rill-symbolic.svg</file>
   </gresource>
 </gresources>

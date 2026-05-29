@@ -25,15 +25,11 @@ pub struct RillApplication {
 
 impl RillApplication {
     pub fn new(
+        app: adw::Application,
         engine: Rc<RefCell<TorrentEngine>>,
         storage: Storage,
         saved_torrents: Vec<SavedTorrent>,
     ) -> Self {
-        let app = adw::Application::builder()
-            .application_id("com.github.sachesi.rill")
-            .flags(gio::ApplicationFlags::HANDLES_OPEN)
-            .build();
-
         let model = Rc::new(RefCell::new(TorrentModel::new()));
 
         let app_self = Self {

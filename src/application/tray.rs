@@ -23,7 +23,9 @@ impl Tray for RillTray {
     }
 
     fn icon_name(&self) -> String {
-        "com.github.sachesi.rill".into()
+        // Monochrome symbolic variant so the tray icon matches the panel
+        // foreground colour instead of showing the full-colour app icon.
+        "com.github.sachesi.rill-symbolic".into()
     }
 
     fn tool_tip(&self) -> ToolTip {
