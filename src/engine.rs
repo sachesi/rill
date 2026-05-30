@@ -136,6 +136,16 @@ impl TorrentEngine {
                                 let stor = storage_clone.clone();
                                 let dht = dht_clone.clone();
                                 let info_hash = hash_uri(&uri);
+                                // mtorrent derives the metainfo filename and the
+                                // download subfolder from the magnet's `dn` value,
+                                // then writes the fetched metainfo with a bare
+                                // fs::write (no parent mkdir). A `dn` containing a
+                                // path separator points at a non-existent subdir, so
+                                // the write fails with ENOENT ("No such file or
+                                // directory") right after metadata is fetched.
+                                // Sanitise `dn` so the derived path stays inside the
+                                // output dir.
+                                let uri = sanitize_magnet_dn(&uri);
 
                                 tokio::task::spawn_local(async move {
                                     // Ensure the download dir exists; mtorrent's magnet
@@ -490,6 +500,48 @@ impl TorrentEngine {
     pub fn config_dir(&self) -> &PathBuf {
         &self.config_dir
     }
+}
+
+/// Rewrites the `dn` (display name) parameter of a magnet URI so it cannot
+/// contain path separators or other filesystem-hostile characters. mtorrent
+/// joins the decoded `dn` straight onto the output directory to form the
+/// metainfo filename and the content subfolder; an unsanitised `dn` such as
+/// "Show / Season 1" yields a path with a missing intermediate directory and
+/// the metainfo write fails with ENOENT. Non-magnet URIs are returned
+/// unchanged.
+fn sanitize_magnet_dn(uri: &str) -> String {
+    let Some(dn_pos) = uri.find("dn=") else {
+        return uri.to_string();
+    };
+    let value_start = dn_pos + 3;
+    let value_end = uri[value_start..]
+        .find('&')
+        .map(|i| value_start + i)
+        .unwrap_or(uri.len());
+
+    let raw = &uri[value_start..value_end];
+    let decoded = urlencoding::decode(raw)
+        .map(|s| s.into_owned())
+        .unwrap_or_else(|_| raw.to_string());
+
+    let cleaned: String = decoded
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect::<String>()
+        .trim()
+        .trim_matches('.')
+        .to_string();
+    let cleaned = if cleaned.is_empty() { "torrent".to_string() } else { cleaned };
+
+    if cleaned == raw {
+        return uri.to_string();
+    }
+    let encoded = urlencoding::encode(&cleaned);
+    format!("{}{}{}", &uri[..value_start], encoded, &uri[value_end..])
 }
 
 fn hash_uri(uri: &str) -> String {
