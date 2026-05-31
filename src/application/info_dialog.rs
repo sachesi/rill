@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::path::Path;
 
 use adw::prelude::*;
-use gtk::glib;
+use gtk::{gio, glib};
 use gtk::subclass::prelude::*;
 
 use crate::engine::{TorrentEngine, TorrentUiState, UiUpdate};
@@ -30,14 +30,18 @@ mod imp {
         pub source_lbl: RefCell<Option<gtk::Label>>,
         pub save_path_lbl: RefCell<Option<gtk::Label>>,
 
-        // List Boxes for other tabs
-        pub files_list_box: RefCell<Option<gtk::ListBox>>,
+        // Files tab: virtualized model. Other tabs use ListBoxes.
+        pub files_store: RefCell<Option<gio::ListStore>>,
         pub peers_list_box: RefCell<Option<gtk::ListBox>>,
         pub trackers_list_box: RefCell<Option<gtk::ListBox>>,
 
         // Control and status state
         pub files_populated: RefCell<bool>,
         pub trackers_populated: RefCell<bool>,
+        /// Guards against overlapping background loads of the files/trackers
+        /// metadata: apply_update fires every 500ms while the dialog is open.
+        pub files_loading: std::cell::Cell<bool>,
+        pub trackers_loading: std::cell::Cell<bool>,
         pub shared_update: RefCell<Option<Rc<RefCell<Option<UiUpdate>>>>>,
         pub updating_ui: RefCell<bool>,
         pub last_sequential_toggle: RefCell<Option<std::time::Instant>>,
@@ -241,10 +245,14 @@ mod imp {
                         if let Some(engine) = obj.imp().engine.borrow().as_ref() {
                             engine.borrow().set_sequential(&info_hash, is_active);
                         }
-                        if let Some(storage) = obj.imp().storage.borrow().as_ref()
-                            && let Err(e) = storage.update_torrent_sequential(&info_hash, is_active)
-                        {
-                            log::warn!("Failed to update sequential flag in DB: {}", e);
+                        if let Some(storage) = obj.imp().storage.borrow().as_ref() {
+                            let storage = storage.clone();
+                            let hash = info_hash.clone();
+                            storage.execute(move |s| {
+                                if let Err(e) = s.update_torrent_sequential(&hash, is_active) {
+                                    log::warn!("Failed to update sequential flag in DB: {}", e);
+                                }
+                            });
                         }
                     }
                 }
@@ -274,30 +282,82 @@ mod imp {
             );
 
             // --- 2. FILES PAGE ---
+            // Virtualized list: a GtkListView over a gio::ListStore of FileObject.
+            // Only the visible rows are materialized, so a torrent with thousands
+            // of files opens instantly instead of building one widget per file.
             let files_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
             files_box.set_margin_top(12);
             files_box.set_margin_bottom(12);
             files_box.set_margin_start(12);
             files_box.set_margin_end(12);
 
-            let files_group = adw::PreferencesGroup::builder()
-                .title("Contents")
+            let files_heading = gtk::Label::builder()
+                .label("Contents")
+                .css_classes(["heading"])
+                .halign(gtk::Align::Start)
                 .build();
 
-            let files_list_box = gtk::ListBox::builder()
+            let files_store = gio::ListStore::new::<crate::model::FileObject>();
+
+            let factory = gtk::SignalListItemFactory::new();
+            factory.connect_setup(|_, item| {
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
+                let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+                row.set_margin_top(8);
+                row.set_margin_bottom(8);
+                row.set_margin_start(12);
+                row.set_margin_end(12);
+                let check = gtk::CheckButton::builder()
+                    .active(true)
+                    .valign(gtk::Align::Center)
+                    .build();
+                let title = gtk::Label::builder()
+                    .xalign(0.0)
+                    .hexpand(true)
+                    .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                    .build();
+                let size = gtk::Label::builder()
+                    .css_classes(["dim-label", "caption"])
+                    .valign(gtk::Align::Center)
+                    .build();
+                row.append(&check);
+                row.append(&title);
+                row.append(&size);
+                item.set_child(Some(&row));
+            });
+            factory.connect_bind(|_, item| {
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
+                let Some(obj) = item.item().and_downcast::<crate::model::FileObject>() else { return };
+                let Some(row) = item.child().and_downcast::<gtk::Box>() else { return };
+                let Some(check) = row.first_child() else { return };
+                let Some(title) = check.next_sibling().and_downcast::<gtk::Label>() else { return };
+                let Some(size) = title.next_sibling().and_downcast::<gtk::Label>() else { return };
+                title.set_text(&obj.path());
+                size.set_text(&format_size(obj.size()));
+            });
+
+            let files_selection = gtk::NoSelection::new(Some(files_store.clone()));
+            let files_view = gtk::ListView::builder()
+                .model(&files_selection)
+                .factory(&factory)
+                .vexpand(true)
                 .css_classes(["boxed-list"])
-                .selection_mode(gtk::SelectionMode::None)
                 .build();
-            files_group.add(&files_list_box);
-            files_box.append(&files_group);
 
-            let files_scroll = gtk::ScrolledWindow::builder()
+            // ListView must be the direct child of the ScrolledWindow so it
+            // virtualizes against the visible viewport; wrapping it in an outer
+            // scroll would hand it unbounded height and force every row to render.
+            let files_view_scroll = gtk::ScrolledWindow::builder()
                 .hscrollbar_policy(gtk::PolicyType::Never)
-                .child(&files_box)
+                .vexpand(true)
+                .child(&files_view)
                 .build();
+
+            files_box.append(&files_heading);
+            files_box.append(&files_view_scroll);
 
             view_stack.add_titled_with_icon(
-                &files_scroll,
+                &files_box,
                 Some("files"),
                 "Files",
                 "folder-symbolic",
@@ -393,7 +453,7 @@ mod imp {
             self.source_lbl.replace(Some(source_lbl));
             self.save_path_lbl.replace(Some(save_path_lbl));
 
-            self.files_list_box.replace(Some(files_list_box));
+            self.files_store.replace(Some(files_store));
             self.peers_list_box.replace(Some(peers_list_box));
             self.trackers_list_box.replace(Some(trackers_list_box));
             self.sequential_switch.replace(Some(sequential_switch));
@@ -461,8 +521,8 @@ impl RillInfoDialog {
         self.imp().save_path_lbl.borrow().clone().unwrap()
     }
 
-    fn files_list_box(&self) -> gtk::ListBox {
-        self.imp().files_list_box.borrow().clone().unwrap()
+    fn files_store(&self) -> gio::ListStore {
+        self.imp().files_store.borrow().clone().unwrap()
     }
 
     fn peers_list_box(&self) -> gtk::ListBox {
@@ -593,22 +653,46 @@ impl RillInfoDialog {
         // Update Peers list
         self.update_peers_tab(&update.peers_list);
 
-        // Populate Files tab once if metadata is downloaded
-        if !*self.imp().files_populated.borrow() {
-            let files = load_torrent_files(&update.uri, &update.output_dir);
-            if !files.is_empty() {
-                self.populate_files_tab(&files);
-                *self.imp().files_populated.borrow_mut() = true;
-            }
+        // Populate Files tab once metadata is available. The scan (read_dir +
+        // bencode parse) runs off the GTK thread; the loading guard stops the
+        // 500ms ticker from launching overlapping scans before metadata arrives.
+        if !*self.imp().files_populated.borrow() && !self.imp().files_loading.get() {
+            self.imp().files_loading.set(true);
+            let uri = update.uri.clone();
+            let output_dir = update.output_dir.clone();
+            let weak = self.downgrade();
+            glib::spawn_future_local(async move {
+                let files = tokio::task::spawn_blocking(move || load_torrent_files(&uri, &output_dir))
+                    .await
+                    .unwrap_or_default();
+                if let Some(obj) = weak.upgrade() {
+                    if !files.is_empty() {
+                        obj.populate_files_tab(&files);
+                        *obj.imp().files_populated.borrow_mut() = true;
+                    }
+                    obj.imp().files_loading.set(false);
+                }
+            });
         }
 
-        // Populate Trackers tab once if metadata is downloaded
-        if !*self.imp().trackers_populated.borrow() {
-            let trackers = load_trackers(&update.uri, &update.output_dir);
-            if !trackers.is_empty() {
-                self.populate_trackers_tab(&trackers);
-                *self.imp().trackers_populated.borrow_mut() = true;
-            }
+        // Populate Trackers tab once metadata is available (same offload pattern).
+        if !*self.imp().trackers_populated.borrow() && !self.imp().trackers_loading.get() {
+            self.imp().trackers_loading.set(true);
+            let uri = update.uri.clone();
+            let output_dir = update.output_dir.clone();
+            let weak = self.downgrade();
+            glib::spawn_future_local(async move {
+                let trackers = tokio::task::spawn_blocking(move || load_trackers(&uri, &output_dir))
+                    .await
+                    .unwrap_or_default();
+                if let Some(obj) = weak.upgrade() {
+                    if !trackers.is_empty() {
+                        obj.populate_trackers_tab(&trackers);
+                        *obj.imp().trackers_populated.borrow_mut() = true;
+                    }
+                    obj.imp().trackers_loading.set(false);
+                }
+            });
         }
     }
 
@@ -660,36 +744,15 @@ impl RillInfoDialog {
     }
 
     fn populate_files_tab(&self, files: &[TorrentFileInfo]) {
-        let list_box = self.files_list_box();
-        
-        // Clear first
-        while let Some(row) = list_box.row_at_index(0) {
-            list_box.remove(&row);
-        }
-
-        for file in files {
-            let checkbox = gtk::CheckButton::builder()
-                .active(true)
-                .valign(gtk::Align::Center)
-                .build();
-
-            let row = adw::ActionRow::builder()
-                .title(&file.path)
-                .subtitle(format_size(file.size))
-                .build();
-
-            row.add_prefix(&checkbox);
-
-            // Priority DropDown/Menu
-            let priority_lbl = gtk::Label::builder()
-                .label("Normal Priority")
-                .css_classes(["dim-label", "caption"])
-                .valign(gtk::Align::Center)
-                .build();
-            row.add_suffix(&priority_lbl);
-
-            list_box.append(&row);
-        }
+        // Rebuild the model only (cheap, data-only). The ListView's factory
+        // materializes row widgets lazily for the visible range.
+        let store = self.files_store();
+        store.remove_all();
+        let objects: Vec<crate::model::FileObject> = files
+            .iter()
+            .map(|f| crate::model::FileObject::new(&f.path, f.size))
+            .collect();
+        store.extend_from_slice(&objects);
     }
 
     fn populate_trackers_tab(&self, trackers: &[String]) {
@@ -727,18 +790,39 @@ fn load_torrent_files(uri: &str, output_dir: &Path) -> Vec<TorrentFileInfo> {
     {
         return extract_files_from_meta(&meta);
     }
-    // 2. Scan output directory for any .torrent files matching the download folder
-    if let Ok(entries) = std::fs::read_dir(output_dir) {
-        for entry in entries.filter_map(Result::ok) {
-            let p = entry.path();
-            if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("torrent")
-                && let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(&p)
-            {
-                return extract_files_from_meta(&meta);
-            }
-        }
+    // 2. For a magnet, find the .torrent in the output dir whose info hash
+    //    matches this magnet — never the first .torrent found, or every magnet
+    //    in the same folder would show the same arbitrary file list.
+    if let Some(meta) = find_metainfo_for_uri(uri, output_dir) {
+        return extract_files_from_meta(&meta);
     }
     Vec::new()
+}
+
+/// Locate the metainfo whose info hash matches `uri`. Only magnets are
+/// resolvable here (a file path is handled by the caller's direct load); the
+/// magnet's btih disambiguates which `.torrent` in `output_dir` belongs to it.
+/// Returns `None` when no match exists rather than guessing.
+fn find_metainfo_for_uri(
+    uri: &str,
+    output_dir: &Path,
+) -> Option<mtorrent::utils::re_exports::mtorrent_core::input::Metainfo> {
+    use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
+    use std::str::FromStr;
+
+    let target = *MagnetLink::from_str(uri).ok()?.info_hash();
+    let entries = std::fs::read_dir(output_dir).ok()?;
+    for entry in entries.filter_map(Result::ok) {
+        let p = entry.path();
+        if p.is_file()
+            && p.extension().and_then(|s| s.to_str()) == Some("torrent")
+            && let Ok(meta) = Metainfo::from_file(&p)
+            && *meta.info_hash() == target
+        {
+            return Some(meta);
+        }
+    }
+    None
 }
 
 fn extract_files_from_meta(meta: &mtorrent::utils::re_exports::mtorrent_core::input::Metainfo) -> Vec<TorrentFileInfo> {
@@ -764,24 +848,15 @@ fn extract_files_from_meta(meta: &mtorrent::utils::re_exports::mtorrent_core::in
 fn load_trackers(uri: &str, output_dir: &Path) -> Vec<String> {
     let mut list = Vec::new();
     
-    // Attempt to load trackers from the torrent file
+    // Attempt to load trackers from the matching torrent file. For a magnet,
+    // match by info hash (see find_metainfo_for_uri) so trackers belong to this
+    // torrent and not the first .torrent in the folder.
     let path = Path::new(uri);
-    let mut loaded_meta = None;
-    if path.exists() && path.is_file() {
-        if let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(path) {
-            loaded_meta = Some(meta);
-        }
-    } else if let Ok(entries) = std::fs::read_dir(output_dir) {
-        for entry in entries.filter_map(Result::ok) {
-            let p = entry.path();
-            if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("torrent")
-                && let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(&p)
-            {
-                loaded_meta = Some(meta);
-                break;
-            }
-        }
-    }
+    let loaded_meta = if path.exists() && path.is_file() {
+        mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(path).ok()
+    } else {
+        find_metainfo_for_uri(uri, output_dir)
+    };
 
     if let Some(meta) = loaded_meta {
         if let Some(tracker) = meta.announce() {

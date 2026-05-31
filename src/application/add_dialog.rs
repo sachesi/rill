@@ -222,8 +222,15 @@ impl RillAddDialog {
         imp.tx.replace(Some(tx));
         imp.storage.replace(Some(storage.clone()));
 
-        let settings = storage.load_settings();
-        dialog.folder_label().set_label(&settings.download_folder);
+        // Load the default download folder off the GTK thread.
+        let dialog_weak = dialog.downgrade();
+        glib::spawn_future_local(async move {
+            if let Ok(settings) = storage.query(|s| s.load_settings()).await
+                && let Some(dialog) = dialog_weak.upgrade()
+            {
+                dialog.folder_label().set_label(&settings.download_folder);
+            }
+        });
 
         dialog.setup_signals();
         dialog.set_mode(mode);
@@ -329,9 +336,16 @@ impl RillAddDialog {
                     {
                         dialog.folder_label().set_label(&path.to_string_lossy());
                         if let Some(storage) = dialog.imp().storage.borrow().as_ref() {
-                            let mut settings = storage.load_settings();
-                            settings.download_folder = path.to_string_lossy().to_string();
-                            let _ = storage.save_settings(&settings);
+                            let storage = storage.clone();
+                            let folder = path.to_string_lossy().to_string();
+                            glib::spawn_future_local(async move {
+                                if let Ok(mut settings) = storage.query(|s| s.load_settings()).await {
+                                    settings.download_folder = folder;
+                                    storage.execute(move |s| {
+                                        let _ = s.save_settings(&settings);
+                                    });
+                                }
+                            });
                         }
                     }
                 },
@@ -377,23 +391,14 @@ impl RillAddDialog {
         self.close();
 
         if let Some(file_path) = self.imp().selected_file.borrow().as_ref() {
-            let name = file_path
+            let file_path = file_path.clone();
+            let fallback_name = file_path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("torrent")
                 .to_string();
 
-            // Resolve the real torrent name from metadata and, when it differs
-            // from the filename stem, copy the .torrent file to a path named
-            // after the real name.  mtorrent uses the .torrent filename stem to
-            // name the download subfolder, so this ensures the folder on disk
-            // matches the real torrent name.
             let config_dir = engine.borrow().config_dir().clone();
-            let (name, path_str) = resolve_torrent_file_path(file_path, &config_dir)
-                .unwrap_or_else(|| {
-                    (name, file_path.to_string_lossy().to_string())
-                });
-
             let dir = download_dir.unwrap_or_else(|| {
                 file_path
                     .parent()
@@ -405,6 +410,20 @@ impl RillAddDialog {
             let window_weak = self.transient_for()
                 .and_then(|t| t.downcast::<crate::application::RillWindow>().ok());
             glib::spawn_future_local(async move {
+                // Resolve the real torrent name from metadata off the GTK thread
+                // (bencode parse + a possible file copy). When the real name
+                // differs from the filename stem, resolve_torrent_file_path copies
+                // the .torrent so mtorrent's download subfolder matches it.
+                let fp = file_path.clone();
+                let cd = config_dir.clone();
+                let fb_name = fallback_name.clone();
+                let fb_path = file_path.to_string_lossy().to_string();
+                let (name, path_str) = tokio::task::spawn_blocking(move || {
+                    resolve_torrent_file_path(&fp, &cd).unwrap_or((fb_name, fb_path))
+                })
+                .await
+                .unwrap_or_else(|_| (fallback_name, file_path.to_string_lossy().to_string()));
+
                 let info_hash = if start_immediately {
                     engine_clone.borrow_mut().start(name, path_str, dir, sequential, tx_clone)
                 } else {

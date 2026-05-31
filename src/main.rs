@@ -24,6 +24,8 @@ fn main() {
         .filter_module("mtorrent::app::dht", log::LevelFilter::Warn)
         .filter_module("mtorrent::app::main", log::LevelFilter::Warn)
         .filter_module("mtorrent_core::utp", log::LevelFilter::Error)
+        // Routine peer churn (RESET / interrupted / bad ack) logged at ERROR upstream; not actionable.
+        .filter_module("mtorrent_core::utp::handle", log::LevelFilter::Off)
         .filter_module("mtorrent_core::utp::udp", log::LevelFilter::Off)
         .init();
 

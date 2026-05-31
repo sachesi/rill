@@ -131,11 +131,10 @@ impl RillApplication {
                 if let Err(e) = storage_clone_shutdown.pause_all_torrents() {
                     log::error!("Failed to pause torrents in database during shutdown: {}", e);
                 }
-                // pause_all() cancels the spawned torrent tasks but returns before
-                // they unwind. Give them a brief grace window to finish any in-flight
-                // metainfo/state writes so the process does not exit mid-write and
-                // leave a half-written file behind.
-                std::thread::sleep(std::time::Duration::from_millis(300));
+                // Drain the storage worker so every queued write (state snapshots,
+                // the pause_all update above) reaches disk before the process exits.
+                // This replaces a fixed sleep with a precise barrier.
+                storage_clone_shutdown.flush_blocking();
             }
         ));
 

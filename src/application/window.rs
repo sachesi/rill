@@ -616,52 +616,14 @@ impl RillWindow {
     fn delete_torrent_confirmed(&self, info_hash: &str, delete_files: bool) {
         self.imp().deleted_torrents.borrow_mut().insert(info_hash.to_string());
 
-        let mut output_dir_to_remove: Option<std::path::PathBuf> = None;
-        let mut torrent_name: Option<String> = None;
-
-        if delete_files
-            && let Some(storage) = self.imp().storage.borrow().as_ref()
-            && let Ok(saved) = storage.load_torrents()
-            && let Some(torrent) = saved.iter().find(|t| t.info_hash == info_hash)
-        {
-            output_dir_to_remove = Some(torrent.output_dir_path());
-            torrent_name = Some(torrent.name.clone());
-        }
-
         if let Some(engine) = self.imp().engine.borrow().as_ref() {
             engine.borrow().stop(info_hash);
         }
-        if delete_files
-            && let (Some(dir), Some(name)) = (output_dir_to_remove, torrent_name)
-        {
-            let safe_name = name.replace("/", "_").replace("\\", "_").replace("..", "_");
-            let torrent_path = dir.join(&safe_name);
-            if torrent_path.exists() {
-                log::info!("Deleting torrent data path: {}", torrent_path.display());
-                let result = if torrent_path.is_dir() {
-                    std::fs::remove_dir_all(&torrent_path)
-                } else {
-                    std::fs::remove_file(&torrent_path)
-                };
-                if let Err(e) = result {
-                    log::warn!("Failed to delete torrent data {}: {}", torrent_path.display(), e);
-                    self.show_toast(&format!("Failed to delete data: {}", e));
-                    return;
-                }
-            } else {
-                log::warn!("Torrent data path does not exist: {}", torrent_path.display());
-            }
-        }
 
-        if let Some(storage) = self.imp().storage.borrow().as_ref() {
-            if let Err(e) = storage.delete_torrent(info_hash) {
-                log::warn!("Failed to delete torrent from database: {}", e);
-                self.show_toast(&format!("Failed to update database: {}", e));
-                return;
-            }
-        }
+        // Immediate UI cleanup: drop the row now so it disappears without waiting
+        // on disk or the database. The deleted-set guard above suppresses any
+        // late updates for this hash.
         self.imp().last_persisted.borrow_mut().remove(info_hash);
-
         let row_opt = self.imp().rows.borrow_mut().remove(info_hash);
         if let Some(row) = row_opt
             && let Some(parent) = row.parent()
@@ -674,27 +636,97 @@ impl RillWindow {
         }
         self.update_section_visibility();
         self.enforce_queue_limits();
+
+        let storage = match self.imp().storage.borrow().as_ref() {
+            Some(s) => s.clone(),
+            None => return,
+        };
+        let window_weak = self.downgrade();
+        let hash = info_hash.to_string();
+        glib::spawn_future_local(async move {
+            // Resolve the data path from the saved record *before* deleting it.
+            if delete_files {
+                let hash_q = hash.clone();
+                let found = storage
+                    .query(move |s| {
+                        s.load_torrent(&hash_q)
+                            .ok()
+                            .flatten()
+                            .map(|t| (t.output_dir_path(), t.name.clone()))
+                    })
+                    .await
+                    .ok()
+                    .flatten();
+                if let Some((dir, name)) = found {
+                    let safe_name = name.replace("/", "_").replace("\\", "_").replace("..", "_");
+                    let torrent_path = dir.join(&safe_name);
+                    let path_for_log = torrent_path.clone();
+                    let res = tokio::task::spawn_blocking(move || {
+                        if !torrent_path.exists() {
+                            return Ok(());
+                        }
+                        if torrent_path.is_dir() {
+                            std::fs::remove_dir_all(&torrent_path)
+                        } else {
+                            std::fs::remove_file(&torrent_path)
+                        }
+                    })
+                    .await;
+                    match res {
+                        Ok(Ok(())) => {
+                            log::info!("Deleted torrent data path: {}", path_for_log.display())
+                        }
+                        Ok(Err(e)) => {
+                            log::warn!(
+                                "Failed to delete torrent data {}: {}",
+                                path_for_log.display(),
+                                e
+                            );
+                            if let Some(window) = window_weak.upgrade() {
+                                window.show_toast(&format!("Failed to delete data: {}", e));
+                            }
+                        }
+                        Err(e) => log::warn!("Delete task failed: {}", e),
+                    }
+                }
+            }
+
+            // Remove the DB record (queued after the read above, so order holds).
+            let hash_d = hash.clone();
+            storage.execute(move |s| {
+                if let Err(e) = s.delete_torrent(&hash_d) {
+                    log::warn!("Failed to delete torrent from database: {}", e);
+                }
+            });
+        });
     }
 
     fn setup_window_state_handlers(&self) {
         let storage = self.imp().storage.borrow().clone();
         self.connect_close_request(move |window| {
             if let Some(storage) = storage.as_ref() {
-                let mut settings = storage.load_settings();
                 let (width, height) = window.default_size();
-                settings.window_width = width;
-                settings.window_height = height;
-                settings.window_maximized = window.is_maximized();
-                if let Err(e) = storage.save_settings(&settings) {
-                    log::warn!("Failed to save window state: {}", e);
-                } else {
-                    log::info!(
-                        "Window state saved: {}x{} (maximized: {})",
-                        width,
-                        height,
-                        settings.window_maximized
-                    );
-                }
+                let maximized = window.is_maximized();
+                let storage = storage.clone();
+                glib::spawn_future_local(async move {
+                    if let Ok(mut settings) = storage.query(|s| s.load_settings()).await {
+                        settings.window_width = width;
+                        settings.window_height = height;
+                        settings.window_maximized = maximized;
+                        storage.execute(move |s| {
+                            if let Err(e) = s.save_settings(&settings) {
+                                log::warn!("Failed to save window state: {}", e);
+                            } else {
+                                log::info!(
+                                    "Window state saved: {}x{} (maximized: {})",
+                                    width,
+                                    height,
+                                    maximized
+                                );
+                            }
+                        });
+                    }
+                });
             }
 
             // Hide to the system tray instead of quitting; torrents keep running.
@@ -801,13 +833,16 @@ impl RillWindow {
                                 }
                             }
                             None => {
-                                if let Some(storage) = window.imp().storage.borrow().as_ref()
-                                    && let Err(e) = storage.mark_completed(&info_hash)
-                                {
-                                    log::warn!(
-                                        "Failed to mark torrent as completed: {}",
-                                        e
-                                    );
+                                if let Some(storage) = window.imp().storage.borrow().as_ref() {
+                                    let hash = info_hash.clone();
+                                    storage.execute(move |s| {
+                                        if let Err(e) = s.mark_completed(&hash) {
+                                            log::warn!(
+                                                "Failed to mark torrent as completed: {}",
+                                                e
+                                            );
+                                        }
+                                    });
                                 }
                                 let name = window
                                     .imp()
@@ -857,19 +892,10 @@ impl RillWindow {
                 }
             }
         } else {
-            // Check database to see if we can pre-populate from a saved record
-            if let Some(storage) = self.imp().storage.borrow().as_ref()
-                && let Ok(Some(t)) = storage.load_torrent(&update.info_hash)
-            {
-                if final_update.total == 0 {
-                    final_update.total = t.total;
-                    final_update.downloaded = t.downloaded;
-                }
-                if final_update.total_pieces == 0 {
-                    final_update.total_pieces = t.total_pieces as usize;
-                    final_update.downloaded_pieces = t.downloaded_pieces as usize;
-                }
-            }
+            // First sighting with no row yet. Every persisted torrent is restored
+            // with a row at startup, so a hash reaching here is brand-new and has
+            // no saved record to pre-populate from. Skip the lookup rather than
+            // read SQLite on the GTK thread for a query that always misses.
         }
 
         if let Some(model) = self.imp().model.borrow().as_ref() {
@@ -913,10 +939,11 @@ impl RillWindow {
                 );
                 torrent.total_pieces = final_update.total_pieces as u64;
                 torrent.downloaded_pieces = final_update.downloaded_pieces as u64;
+                // New-torrent INSERT stays synchronous: it runs once per torrent
+                // (not hot), and the record must be visible immediately so the
+                // queue-limit pass and a restart both see a consistent database.
+                // On failure, roll back the model insert and surface the error.
                 if let Err(e) = storage.save_torrent(&torrent) {
-                    // Do not surface a torrent the database never accepted: it would
-                    // vanish on restart and could desync engine/UI state. Roll back
-                    // the model insert done above and tell the user.
                     log::warn!("Failed to save new torrent: {}", e);
                     drop(rows);
                     if let Some(model) = self.imp().model.borrow().as_ref() {
@@ -1328,20 +1355,28 @@ impl RillWindow {
                 return;
             }
 
-            if let Err(e) =
-                storage.update_torrent_state(
-                    &update.info_hash,
-                    state_str,
-                    update.downloaded,
-                    update.total,
-                    update.total_pieces as u64,
-                    update.downloaded_pieces as u64,
-                )
-            {
-                log::warn!("Failed to save torrent state: {}", e);
-            } else {
-                self.imp().last_persisted.borrow_mut().insert(update.info_hash.clone(), snapshot);
-            }
+            // Offload the write to the storage worker so the per-second snapshot
+            // does not touch SQLite on the GTK main thread. Update the coalescing
+            // cache optimistically; a failed write is logged on the worker.
+            let info_hash = update.info_hash.clone();
+            let state_owned = state_str.to_string();
+            let downloaded = update.downloaded;
+            let total = update.total;
+            let total_pieces = update.total_pieces as u64;
+            let downloaded_pieces = update.downloaded_pieces as u64;
+            storage.execute(move |s| {
+                if let Err(e) = s.update_torrent_state(
+                    &info_hash,
+                    &state_owned,
+                    downloaded,
+                    total,
+                    total_pieces,
+                    downloaded_pieces,
+                ) {
+                    log::warn!("Failed to save torrent state: {}", e);
+                }
+            });
+            self.imp().last_persisted.borrow_mut().insert(update.info_hash.clone(), snapshot);
         }
     }
 
@@ -1368,6 +1403,10 @@ impl RillWindow {
             Some(s) => s.clone(),
             None => return,
         };
+        // Synchronous read: the queue-limit decision must observe the current
+        // database state (added_at, per-torrent state). Routing this through the
+        // async worker let a just-added torrent be missing from the snapshot,
+        // which skewed auto-pause/resume and shuffled torrents between sections.
         let (settings, saved) = storage.load_settings_and_torrents();
         let max_dl = settings.max_active_downloads as usize;
 

@@ -7,21 +7,99 @@ pub use db::Database;
 pub use models::{AppSettings, SavedTorrent};
 
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-/// Thread-safe storage handle
+/// A unit of work for the storage worker thread.
+enum Job {
+    /// Run a closure against the storage handle on the worker thread.
+    Run(Box<dyn FnOnce(&Storage) + Send>),
+    /// Drain barrier: the worker acks once it reaches this point, so all jobs
+    /// queued before it have completed. Used to flush pending writes on exit.
+    Flush(mpsc::SyncSender<()>),
+}
+
+/// Thread-safe storage handle.
+///
+/// All public methods remain synchronous (they lock the database mutex and run
+/// directly). On top of that, every handle carries a sender to a dedicated
+/// worker thread so callers on the GTK main thread can offload database I/O via
+/// [`Storage::execute`] (fire-and-forget writes) and [`Storage::query`] (async
+/// reads) instead of blocking the UI.
 #[derive(Clone, Debug)]
 pub struct Storage {
     db: Arc<Mutex<Database>>,
+    worker: mpsc::Sender<Job>,
 }
 
 impl Storage {
     /// Open or create storage at specified path
     pub fn open(path: PathBuf) -> Result<Self, String> {
-        let db = Database::open(path).map_err(|e| format!("Database error: {}", e))?;
-        Ok(Self {
-            db: Arc::new(Mutex::new(db)),
-        })
+        let db = Arc::new(Mutex::new(
+            Database::open(path).map_err(|e| format!("Database error: {}", e))?,
+        ));
+        let (tx, rx) = mpsc::channel::<Job>();
+        // The worker owns its own handle (sharing the same db Arc + sender) so it
+        // can run the high-level methods that closures call. The thread lives for
+        // the whole process; jobs are drained in FIFO order, serializing SQLite.
+        let worker_storage = Storage { db: db.clone(), worker: tx.clone() };
+        std::thread::Builder::new()
+            .name("storage-worker".into())
+            .spawn(move || {
+                while let Ok(job) = rx.recv() {
+                    match job {
+                        Job::Run(f) => {
+                            if let Err(e) = std::panic::catch_unwind(
+                                std::panic::AssertUnwindSafe(|| f(&worker_storage)),
+                            ) {
+                                log::error!("Storage worker job panicked: {:?}", e);
+                            }
+                        }
+                        Job::Flush(ack) => {
+                            let _ = ack.send(());
+                        }
+                    }
+                }
+            })
+            .map_err(|e| format!("Failed to spawn storage worker: {}", e))?;
+        Ok(Self { db, worker: tx })
+    }
+
+    /// Queue a fire-and-forget database operation on the worker thread. Returns
+    /// immediately; the closure runs off the calling (GTK) thread. Use for writes
+    /// whose result the UI does not need to wait on.
+    pub fn execute<F>(&self, f: F)
+    where
+        F: FnOnce(&Storage) + Send + 'static,
+    {
+        if self.worker.send(Job::Run(Box::new(f))).is_err() {
+            log::error!("Storage worker offline; dropped a write");
+        }
+    }
+
+    /// Run a read on the worker thread and await its result. Awaiting the
+    /// returned future on the GTK main context never blocks the UI: the oneshot
+    /// receiver is a plain waker future, woken when the worker sends the result.
+    pub async fn query<F, R>(&self, f: F) -> Result<R, String>
+    where
+        F: FnOnce(&Storage) -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        let (otx, orx) = tokio::sync::oneshot::channel();
+        self.execute(move |s| {
+            let _ = otx.send(f(s));
+        });
+        orx.await.map_err(|_| "Storage worker dropped query".to_string())
+    }
+
+    /// Block until the worker has drained every job queued before this call.
+    /// Intended for shutdown, where briefly blocking the main thread is fine and
+    /// guarantees in-flight writes hit disk before the process exits.
+    pub fn flush_blocking(&self) {
+        let (ack_tx, ack_rx) = mpsc::sync_channel(0);
+        if self.worker.send(Job::Flush(ack_tx)).is_ok() {
+            let _ = ack_rx.recv();
+        }
     }
 
     /// Acquire the database guard, recovering from a poisoned mutex instead of
