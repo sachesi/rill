@@ -5,6 +5,7 @@ use gtk::glib;
 use glib::subclass::prelude::*;
 
 use crate::engine::TorrentUiState;
+use crate::util::format_size;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, glib::Enum)]
 #[enum_type(name = "RillTorrentState")]
@@ -225,22 +226,5 @@ impl TorrentObject {
     /// Get the output directory as PathBuf
     pub fn output_dir_path(&self) -> PathBuf {
         PathBuf::from(self.output_dir())
-    }
-}
-
-fn format_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut size = bytes as f64;
-    let mut unit_index = 0;
-    
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
-    }
-    
-    if unit_index == 0 {
-        format!("{} B", bytes)
-    } else {
-        format!("{:.1} {}", size, UNITS[unit_index])
     }
 }

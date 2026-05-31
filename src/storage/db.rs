@@ -19,7 +19,7 @@ impl Database {
         
         // Enable WAL mode for better concurrency and performance
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "synchronous", "FULL")?;
         conn.pragma_update(None, "busy_timeout", "5000")?;
         
         let db = Self { conn };
@@ -198,6 +198,37 @@ impl Database {
         Ok(torrents)
     }
 
+    /// Load a single torrent by info hash, or `None` if absent.
+    pub fn load_torrent(&self, info_hash: &str) -> SqlResult<Option<SavedTorrent>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT info_hash, name, uri, state, downloaded, total,
+                    output_dir, added_at, completed_at, last_active,
+                    total_pieces, downloaded_pieces, sequential
+             FROM torrents
+             WHERE info_hash = ?1",
+        )?;
+
+        let mut rows = stmt.query_map([info_hash], |row| {
+            Ok(SavedTorrent {
+                info_hash: row.get(0)?,
+                name: row.get(1)?,
+                uri: row.get(2)?,
+                state: row.get(3)?,
+                downloaded: row.get::<_, i64>(4)? as u64,
+                total: row.get::<_, i64>(5)? as u64,
+                output_dir: row.get(6)?,
+                added_at: row.get(7)?,
+                completed_at: row.get(8)?,
+                last_active: row.get(9)?,
+                total_pieces: row.get::<_, i64>(10)? as u64,
+                downloaded_pieces: row.get::<_, i64>(11)? as u64,
+                sequential: row.get::<_, i32>(12)? != 0,
+            })
+        })?;
+
+        rows.next().transpose()
+    }
+
     /// Update torrent state
     #[allow(clippy::too_many_arguments)]
     pub fn update_torrent_state(
@@ -304,12 +335,23 @@ impl Database {
             .unwrap_or(0)
     }
 
-    /// Load app settings from database
+    /// Load app settings from database.
+    ///
+    /// Reads the whole settings table in one query rather than firing a separate
+    /// SELECT per key; callers such as `enforce_queue_limits()` invoke this often.
     pub fn load_settings(&self) -> AppSettings {
-        let download_folder = self
-            .get_setting("download_folder")
-            .ok()
-            .flatten()
+        let map: std::collections::HashMap<String, String> = self
+            .conn
+            .prepare("SELECT key, value FROM settings")
+            .and_then(|mut stmt| {
+                stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                    .collect::<SqlResult<std::collections::HashMap<_, _>>>()
+            })
+            .unwrap_or_default();
+
+        let download_folder = map
+            .get("download_folder")
+            .cloned()
             .unwrap_or_else(|| {
                 dirs_next::download_dir()
                     .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -317,79 +359,58 @@ impl Database {
                     .to_string()
             });
 
-        let window_width = self
-            .get_setting("window_width")
-            .ok()
-            .flatten()
+        let window_width = map
+            .get("window_width")
             .and_then(|v| v.parse().ok())
             .unwrap_or(375);
 
-        let window_height = self
-            .get_setting("window_height")
-            .ok()
-            .flatten()
+        let window_height = map
+            .get("window_height")
             .and_then(|v| v.parse().ok())
             .unwrap_or(480);
 
-        let window_maximized = self
-            .get_setting("window_maximized")
-            .ok()
-            .flatten()
+        let window_maximized = map
+            .get("window_maximized")
             .and_then(|v| v.parse().ok())
             .unwrap_or(false);
 
-        let log_level = self
-            .get_setting("log_level")
-            .ok()
-            .flatten()
+        let log_level = map
+            .get("log_level")
+            .cloned()
             .unwrap_or_else(|| "info".to_string());
 
-        let log_torrent_ops = self
-            .get_setting("log_torrent_ops")
-            .ok()
-            .flatten()
+        let log_torrent_ops = map
+            .get("log_torrent_ops")
             .and_then(|v| v.parse().ok())
             .unwrap_or(false);
 
-        let max_active_downloads = self
-            .get_setting("max_active_downloads")
-            .ok()
-            .flatten()
+        let max_active_downloads = map
+            .get("max_active_downloads")
             .and_then(|v| v.parse().ok())
             .unwrap_or(3);
 
-        let max_active_uploads = self
-            .get_setting("max_active_uploads")
-            .ok()
-            .flatten()
+        let max_active_uploads = map
+            .get("max_active_uploads")
             .and_then(|v| v.parse().ok())
             .unwrap_or(3);
 
-        let global_download_limit = self
-            .get_setting("global_download_limit")
-            .ok()
-            .flatten()
+        let global_download_limit = map
+            .get("global_download_limit")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
 
-        let global_upload_limit = self
-            .get_setting("global_upload_limit")
-            .ok()
-            .flatten()
+        let global_upload_limit = map
+            .get("global_upload_limit")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
 
-        let seeding_ratio_limit = self
-            .get_setting("seeding_ratio_limit")
-            .ok()
-            .flatten()
+        let seeding_ratio_limit = map
+            .get("seeding_ratio_limit")
             .and_then(|v| v.parse().ok())
             .unwrap_or(1.0);
 
-        let pwp_port = self
-            .get_setting("pwp_port")
-            .ok()
-            .flatten()
+        let pwp_port = map
+            .get("pwp_port")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
 
@@ -409,20 +430,36 @@ impl Database {
         }
     }
 
-    /// Save app settings to database
+    /// Save app settings to database.
+    ///
+    /// All writes commit atomically inside a single transaction: a crash partway
+    /// through can never leave some settings updated and others stale.
     pub fn save_settings(&self, settings: &AppSettings) -> SqlResult<()> {
-        self.set_setting("download_folder", &settings.download_folder)?;
-        self.set_setting("window_width", &settings.window_width.to_string())?;
-        self.set_setting("window_height", &settings.window_height.to_string())?;
-        self.set_setting("window_maximized", &settings.window_maximized.to_string())?;
-        self.set_setting("log_level", &settings.log_level)?;
-        self.set_setting("log_torrent_ops", &settings.log_torrent_ops.to_string())?;
-        self.set_setting("max_active_downloads", &settings.max_active_downloads.to_string())?;
-        self.set_setting("max_active_uploads", &settings.max_active_uploads.to_string())?;
-        self.set_setting("global_download_limit", &settings.global_download_limit.to_string())?;
-        self.set_setting("global_upload_limit", &settings.global_upload_limit.to_string())?;
-        self.set_setting("seeding_ratio_limit", &settings.seeding_ratio_limit.to_string())?;
-        self.set_setting("pwp_port", &settings.pwp_port.to_string())?;
-        Ok(())
+        self.conn.execute_batch("BEGIN")?;
+        let result = (|| {
+            self.set_setting("download_folder", &settings.download_folder)?;
+            self.set_setting("window_width", &settings.window_width.to_string())?;
+            self.set_setting("window_height", &settings.window_height.to_string())?;
+            self.set_setting("window_maximized", &settings.window_maximized.to_string())?;
+            self.set_setting("log_level", &settings.log_level)?;
+            self.set_setting("log_torrent_ops", &settings.log_torrent_ops.to_string())?;
+            self.set_setting("max_active_downloads", &settings.max_active_downloads.to_string())?;
+            self.set_setting("max_active_uploads", &settings.max_active_uploads.to_string())?;
+            self.set_setting("global_download_limit", &settings.global_download_limit.to_string())?;
+            self.set_setting("global_upload_limit", &settings.global_upload_limit.to_string())?;
+            self.set_setting("seeding_ratio_limit", &settings.seeding_ratio_limit.to_string())?;
+            self.set_setting("pwp_port", &settings.pwp_port.to_string())?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
     }
 }

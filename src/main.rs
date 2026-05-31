@@ -4,6 +4,7 @@ mod listener;
 mod logging;
 mod model;
 mod storage;
+mod util;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -25,7 +26,17 @@ fn main() {
         .filter_module("mtorrent_core::utp", log::LevelFilter::Error)
         .filter_module("mtorrent_core::utp::udp", log::LevelFilter::Off)
         .init();
-    
+
+    // Log panics from any thread before delegating to the default hook. The PWP
+    // and storage runtimes run on detached threads whose JoinHandles are dropped,
+    // so a panic there would otherwise surface only on stderr; routing it through
+    // the logger makes such failures visible in the application's log.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("Thread panicked: {}", info);
+        default_hook(info);
+    }));
+
     gtk::init().expect("Failed to initialize GTK");
 
     // Register GResource

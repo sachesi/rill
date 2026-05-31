@@ -104,8 +104,12 @@ impl TorrentModel {
             existing.set_output_dir(&update.output_dir.to_string_lossy());
             existing.set_uri(&update.uri);
             
-            // Notify filters that this object changed
-            self.all_torrents.items_changed(0, 0, 0);
+            // Notify filters to re-evaluate every item. items_changed(0, 0, 0) is a
+            // no-op to GTK, so a state change (e.g. Downloading → Completed) would
+            // not move the row between filtered sections until the next real
+            // mutation. Reporting n removed + n added at position 0 forces a refresh.
+            let n = self.all_torrents.n_items();
+            self.all_torrents.items_changed(0, n, n);
         } else {
             // Create new torrent
             let torrent = TorrentObject::new(

@@ -81,6 +81,12 @@ mod imp {
         pub selected_hashes: RefCell<std::collections::HashSet<String>>,
         pub cancel_btn: RefCell<Option<gtk::Button>>,
         pub window_title: RefCell<Option<adw::WindowTitle>>,
+        /// Source ID of the 100ms UiEvent drain loop, kept for explicit ownership
+        /// and cleanup rather than relying solely on weak-ref expiry.
+        pub update_source: RefCell<Option<glib::SourceId>>,
+        /// True while a coalesced `enforce_queue_limits` pass is already scheduled,
+        /// so a burst of user actions triggers a single deferred run.
+        pub enforce_pending: RefCell<bool>,
     }
 
     #[glib::object_subclass]
@@ -778,7 +784,7 @@ impl RillWindow {
 
     fn setup_update_loop(&self, rx: async_channel::Receiver<UiEvent>) {
         let window = self.downgrade();
-        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        let source = glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             if let Some(window) = window.upgrade() {
                 while let Ok(event) = rx.try_recv() {
                     match event {
@@ -827,6 +833,7 @@ impl RillWindow {
                 glib::ControlFlow::Break
             }
         });
+        self.imp().update_source.replace(Some(source));
     }
 
     fn process_update(&self, update: &UiUpdate) {
@@ -852,8 +859,7 @@ impl RillWindow {
         } else {
             // Check database to see if we can pre-populate from a saved record
             if let Some(storage) = self.imp().storage.borrow().as_ref()
-                && let Ok(saved) = storage.load_torrents()
-                && let Some(t) = saved.iter().find(|t| t.info_hash == update.info_hash)
+                && let Ok(Some(t)) = storage.load_torrent(&update.info_hash)
             {
                 if final_update.total == 0 {
                     final_update.total = t.total;
@@ -890,11 +896,17 @@ impl RillWindow {
             }
         } else {
             if let Some(storage) = self.imp().storage.borrow().as_ref() {
+                let state_str = match final_update.state {
+                    TorrentUiState::Downloading => "downloading",
+                    TorrentUiState::Paused => "paused",
+                    TorrentUiState::Completed => "completed",
+                    TorrentUiState::Error => "error",
+                };
                 let mut torrent = SavedTorrent::new(
                     final_update.info_hash.clone(),
                     final_update.name.clone(),
                     final_update.uri.clone(),
-                    "paused".to_string(),
+                    state_str.to_string(),
                     final_update.downloaded,
                     final_update.total,
                     final_update.output_dir.clone(),
@@ -902,7 +914,16 @@ impl RillWindow {
                 torrent.total_pieces = final_update.total_pieces as u64;
                 torrent.downloaded_pieces = final_update.downloaded_pieces as u64;
                 if let Err(e) = storage.save_torrent(&torrent) {
+                    // Do not surface a torrent the database never accepted: it would
+                    // vanish on restart and could desync engine/UI state. Roll back
+                    // the model insert done above and tell the user.
                     log::warn!("Failed to save new torrent: {}", e);
+                    drop(rows);
+                    if let Some(model) = self.imp().model.borrow().as_ref() {
+                        model.borrow_mut().remove_torrent(&final_update.info_hash);
+                    }
+                    self.show_toast(&format!("Could not save torrent: {}", e));
+                    return;
                 }
             }
 
@@ -1324,21 +1345,36 @@ impl RillWindow {
         }
     }
 
+    /// Coalesces bursts of queue-limit checks into a single deferred pass. A
+    /// typical user action fires this several times; running each one immediately
+    /// would re-query the database and rescan rows repeatedly. The work runs after
+    /// a short delay so a rapid sequence collapses to one `enforce_queue_limits_now`.
     pub fn enforce_queue_limits(&self) {
+        if *self.imp().enforce_pending.borrow() {
+            return;
+        }
+        *self.imp().enforce_pending.borrow_mut() = true;
+        let window = self.downgrade();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
+            if let Some(window) = window.upgrade() {
+                *window.imp().enforce_pending.borrow_mut() = false;
+                window.enforce_queue_limits_now();
+            }
+        });
+    }
+
+    fn enforce_queue_limits_now(&self) {
         let storage = match self.imp().storage.borrow().as_ref() {
             Some(s) => s.clone(),
             None => return,
         };
-        let settings = storage.load_settings();
+        let (settings, saved) = storage.load_settings_and_torrents();
         let max_dl = settings.max_active_downloads as usize;
 
         // Get all rows
         let rows = self.imp().rows.borrow();
         let mut active_downloads = 0;
         let mut queued_torrents: Vec<(String, i64)> = Vec::new();
-
-        // Load all torrents from DB
-        let saved = storage.load_torrents().unwrap_or_default();
         let added_at_map: HashMap<String, i64> = saved.iter().map(|t| (t.info_hash.clone(), t.added_at)).collect();
         let state_map: HashMap<String, String> = saved.iter().map(|t| (t.info_hash.clone(), t.state.clone())).collect();
 

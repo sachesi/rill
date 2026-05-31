@@ -7,6 +7,7 @@ use gtk::glib;
 use gtk::subclass::prelude::*;
 
 use crate::engine::{TorrentEngine, TorrentUiState, UiUpdate};
+use crate::util::format_size;
 
 mod imp {
     use super::*;
@@ -832,31 +833,6 @@ fn format_eta(downloaded: u64, total: u64, speed_down: u64) -> String {
         format!("{}h {}m", eta_secs / 3600, (eta_secs % 3600) / 60)
     } else {
         format!("{}d {}h", eta_secs / 86400, (eta_secs % 86400) / 3600)
-    }
-}
-
-fn format_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    const THRESHOLD: f64 = 1024.0;
-
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-
-    let mut size = bytes as f64;
-    let mut unit_index = 0;
-
-    while size >= THRESHOLD && unit_index < UNITS.len() - 1 {
-        size /= THRESHOLD;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 || size >= 100.0 {
-        format!("{:.0} {}", size, UNITS[unit_index])
-    } else if size >= 10.0 {
-        format!("{:.1} {}", size, UNITS[unit_index])
-    } else {
-        format!("{:.2} {}", size, UNITS[unit_index])
     }
 }
 

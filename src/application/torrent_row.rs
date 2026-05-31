@@ -8,6 +8,7 @@ use gtk::subclass::prelude::*;
 use async_channel::Sender;
 
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
+use crate::util::format_size;
 
 mod imp {
     use super::*;
@@ -619,22 +620,5 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
 
         popover.insert_action_group("ctx", Some(&actions));
         popover.popup();
-    }
-}
-
-fn format_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB"];
-    let mut size = bytes as f64;
-    let mut unit_index = 0;
-
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 {
-        format!("{} {}", bytes, UNITS[0])
-    } else {
-        format!("{:.1} {}", size, UNITS[unit_index])
     }
 }

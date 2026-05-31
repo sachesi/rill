@@ -10,6 +10,10 @@ use crate::engine::{TorrentUiState, UiEvent, UiUpdate};
 
 pub struct GtkListener {
     canceller: Weak<()>,
+    /// Set by the engine when this torrent is paused/stopped. Checked first so
+    /// cancellation is observed atomically rather than racing on the canceller's
+    /// strong count.
+    cancel_flag: Arc<std::sync::atomic::AtomicBool>,
     tx: Sender<UiEvent>,
     info_hash: String,
     name: String,
@@ -28,12 +32,17 @@ pub struct GtkListener {
     /// Directory holding the persisted `.mtorrent` piece-state file and the real
     /// 20-byte info hash keying it. Resolved once from the URI + output dir.
     state_target: Option<(PathBuf, [u8; 20])>,
+    /// Last computed piece map keyed by (total_pieces, downloaded_pieces). The
+    /// map only changes when piece availability changes, so we skip the per-second
+    /// state-file read + bencode parse while the downloaded count is unchanged.
+    last_piece_map: Option<(usize, usize, Vec<u8>)>,
 }
 
 impl GtkListener {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         canceller: Weak<()>,
+        cancel_flag: Arc<std::sync::atomic::AtomicBool>,
         tx: Sender<UiEvent>,
         info_hash: String,
         name: String,
@@ -46,6 +55,7 @@ impl GtkListener {
     ) -> Self {
         Self {
             canceller,
+            cancel_flag,
             tx,
             info_hash,
             name,
@@ -61,6 +71,7 @@ impl GtkListener {
             sequential,
             info_hash_resolved: false,
             state_target: None,
+            last_piece_map: None,
         }
     }
 }
@@ -169,7 +180,7 @@ impl StateListener for GtkListener {
             self.info_hash_resolved = true;
         }
 
-        if self.canceller.strong_count() < 2 {
+        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) || self.canceller.strong_count() < 2 {
             log::debug!("Listener cancelled for: {}", self.info_hash);
             let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
                 info_hash: self.info_hash.clone(),
@@ -241,9 +252,20 @@ impl StateListener for GtkListener {
             });
         }
 
-        let piece_map = match &self.state_target {
-            Some((dir, ih)) => build_piece_map(dir, ih, total_pieces),
-            None => Vec::new(),
+        let piece_map = if let Some((dir, ih)) = self.state_target.clone() {
+            let reuse = matches!(
+                &self.last_piece_map,
+                Some((t, d, _)) if *t == total_pieces && *d == downloaded_pieces
+            );
+            if reuse {
+                self.last_piece_map.as_ref().unwrap().2.clone()
+            } else {
+                let m = build_piece_map(&dir, &ih, total_pieces);
+                self.last_piece_map = Some((total_pieces, downloaded_pieces, m.clone()));
+                m
+            }
+        } else {
+            Vec::new()
         };
 
         let _ = self.tx.try_send(UiEvent::Update(UiUpdate {

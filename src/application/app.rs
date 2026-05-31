@@ -21,6 +21,8 @@ pub struct RillApplication {
     saved_torrents: Vec<SavedTorrent>,
     // Keeps the application alive while the window is hidden to the tray.
     _hold: gio::ApplicationHoldGuard,
+    // Source ID of the 100ms tray-command drain loop, kept for explicit ownership.
+    tray_source: RefCell<Option<glib::SourceId>>,
 }
 
 impl RillApplication {
@@ -39,6 +41,7 @@ impl RillApplication {
             storage: storage.clone(),
             saved_torrents,
             _hold: app.hold(),
+            tray_source: RefCell::new(None),
         };
 
         // Set up application-level actions
@@ -128,6 +131,11 @@ impl RillApplication {
                 if let Err(e) = storage_clone_shutdown.pause_all_torrents() {
                     log::error!("Failed to pause torrents in database during shutdown: {}", e);
                 }
+                // pause_all() cancels the spawned torrent tasks but returns before
+                // they unwind. Give them a brief grace window to finish any in-flight
+                // metainfo/state writes so the process does not exit mid-write and
+                // leave a half-written file behind.
+                std::thread::sleep(std::time::Duration::from_millis(300));
             }
         ));
 
@@ -151,7 +159,7 @@ impl RillApplication {
             move |_, _| {
                 let about = adw::AboutWindow::builder()
                     .application_name("Rill")
-                    .version("0.1.0")
+                    .version("0.1.2")
                     .developer_name("sachesi")
                     .license_type(gtk::License::MitX11)
                     .comments("Minimalistic GTK4/Libadwaita BitTorrent client")
@@ -201,7 +209,7 @@ impl RillApplication {
     fn setup_tray(&self) {
         let rx = tray::spawn();
         let app_weak = self.app.downgrade();
-        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        let source = glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             let Some(app) = app_weak.upgrade() else {
                 return glib::ControlFlow::Break;
             };
@@ -218,6 +226,7 @@ impl RillApplication {
             }
             glib::ControlFlow::Continue
         });
+        self.tray_source.replace(Some(source));
     }
 
     pub fn run(&self) -> glib::ExitCode {

@@ -38,6 +38,13 @@ impl Storage {
             .map_err(|e| format!("Failed to load torrents: {}", e))
     }
 
+    /// Load a single torrent by info hash
+    pub fn load_torrent(&self, info_hash: &str) -> Result<Option<SavedTorrent>, String> {
+        self.db()
+            .load_torrent(info_hash)
+            .map_err(|e| format!("Failed to load torrent: {}", e))
+    }
+
     /// Save or update a torrent
     pub fn save_torrent(&self, torrent: &SavedTorrent) -> Result<(), String> {
         self.db()
@@ -93,6 +100,18 @@ impl Storage {
     /// Load app settings
     pub fn load_settings(&self) -> AppSettings {
         self.db().load_settings()
+    }
+
+    /// Load settings and all torrents under a single lock acquisition, so both
+    /// reads observe the same database snapshot rather than two separate moments.
+    pub fn load_settings_and_torrents(&self) -> (AppSettings, Vec<SavedTorrent>) {
+        let db = self.db();
+        let settings = db.load_settings();
+        let torrents = db.load_torrents().unwrap_or_else(|e| {
+            log::warn!("Failed to load torrents: {}", e);
+            Vec::new()
+        });
+        (settings, torrents)
     }
 
     /// Read just the configured PWP port without loading every setting.
