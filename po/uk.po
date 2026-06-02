@@ -1,0 +1,302 @@
+# Ukrainian translation for rill.
+# Copyright (C) 2026 sachesi
+# This file is distributed under the same license as the rill package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: rill\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-02 00:00+0000\n"
+"PO-Revision-Date: 2026-06-02 00:00+0000\n"
+"Last-Translator: sachesi <xsachesi@pm.me>\n"
+"Language-Team: Ukrainian\n"
+"Language: uk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "0 means random port"
+msgstr "0 — випадковий порт"
+
+msgid "0 means unlimited"
+msgstr "0 — без обмежень"
+
+msgid "Add"
+msgstr "Додати"
+
+msgid "Add Torrent"
+msgstr "Додати торент"
+
+msgid "Add Torrent File"
+msgstr "Додати торент-файл"
+
+msgid "Add Torrent Link"
+msgstr "Додати посилання на торент"
+
+msgid "Are you sure you want to delete \"{name}\"? This action cannot be undone."
+msgstr "Ви впевнені, що хочете видалити «{name}»? Цю дію неможливо скасувати."
+
+msgid "Are you sure you want to delete {count} selected torrents? This action cannot be undone."
+msgstr "Ви впевнені, що хочете видалити вибрані торенти ({count})? Цю дію неможливо скасувати."
+
+msgid "Bandwidth Limits"
+msgstr "Обмеження пропускної здатності"
+
+msgid "BitTorrent client"
+msgstr "Клієнт BitTorrent"
+
+msgid "Browse for .torrent file"
+msgstr "Вибрати файл .torrent"
+
+msgid "Cancel"
+msgstr "Скасувати"
+
+msgid "Choose Download Folder"
+msgstr "Виберіть теку завантаження"
+
+msgid "Choose Folder"
+msgstr "Вибрати теку"
+
+msgid "Completed"
+msgstr "Завершено"
+
+msgid "Connected"
+msgstr "З’єднано"
+
+msgid "Connected Peers"
+msgstr "Підключені піри"
+
+msgid "Connection"
+msgstr "З’єднання"
+
+msgid "Contents"
+msgstr "Вміст"
+
+msgid "Debug"
+msgstr "Зневадження"
+
+msgid "Delete"
+msgstr "Видалити"
+
+msgid "Delete Selected Torrents?"
+msgstr "Видалити вибрані торенти?"
+
+msgid "Delete Torrent?"
+msgstr "Видалити торент?"
+
+msgid "Delete downloaded data files"
+msgstr "Видалити завантажені файли даних"
+
+msgid "Details"
+msgstr "Подробиці"
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Download Complete"
+msgstr "Завантаження завершено"
+
+msgid "Download Folder"
+msgstr "Тека завантаження"
+
+msgid "Download Limit (KiB/s)"
+msgstr "Обмеження завантаження (КіБ/с)"
+
+msgid "Download Speed"
+msgstr "Швидкість завантаження"
+
+msgid "Download from start to finish (sequential)"
+msgstr "Завантажувати від початку до кінця (послідовно)"
+
+msgid "Downloading"
+msgstr "Завантаження"
+
+msgid "Downloads"
+msgstr "Завантаження"
+
+msgid "Error"
+msgstr "Помилка"
+
+msgid "Estimated Time (ETA)"
+msgstr "Орієнтовний час (ETA)"
+
+msgid "Files"
+msgstr "Файли"
+
+msgid "General"
+msgstr "Загальні"
+
+msgid "Info"
+msgstr "Інформація"
+
+msgid "Listening Port"
+msgstr "Порт прослуховування"
+
+msgid "Log Level"
+msgstr "Рівень журналювання"
+
+msgid "Log Operations"
+msgstr "Журналювати операції"
+
+msgid "Log detailed start/stop/pause/resume events"
+msgstr "Журналювати докладні події запуску/зупинки/паузи/відновлення"
+
+msgid "Logging"
+msgstr "Журналювання"
+
+msgid "Magnet Link or HTTP URL"
+msgstr "Magnet-посилання або HTTP URL"
+
+msgid "Main Menu"
+msgstr "Головне меню"
+
+msgid "Max Downloads"
+msgstr "Макс. завантажень"
+
+msgid "Max Uploads"
+msgstr "Макс. вивантажень"
+
+msgid "Minimalistic GTK4/Libadwaita BitTorrent client"
+msgstr "Мінімалістичний клієнт BitTorrent на GTK4/Libadwaita"
+
+msgid "Network"
+msgstr "Мережа"
+
+msgid "No Torrents"
+msgstr "Немає торентів"
+
+msgid "No active peers connected."
+msgstr "Немає активних підключених пірів."
+
+msgid "Options"
+msgstr "Параметри"
+
+msgid "Overview"
+msgstr "Огляд"
+
+msgid "Paused"
+msgstr "Призупинено"
+
+msgid "Peers"
+msgstr "Піри"
+
+msgid "Peers Count"
+msgstr "Кількість пірів"
+
+msgid "Preferences"
+msgstr "Налаштування"
+
+msgid "Quit"
+msgstr "Вийти"
+
+msgid "S_top selected"
+msgstr "З_упинити вибрані"
+
+msgid "Save Folder"
+msgstr "Тека збереження"
+
+msgid "Search Torrents"
+msgstr "Пошук торентів"
+
+msgid "Search torrents…"
+msgstr "Пошук торентів…"
+
+msgid "Seeding Ratio"
+msgstr "Коефіцієнт роздачі"
+
+msgid "Select Torrent File"
+msgstr "Виберіть торент-файл"
+
+msgid "Select Torrents"
+msgstr "Вибір торентів"
+
+msgid "Select _all"
+msgstr "Вибрати _все"
+
+msgid "Show Rill"
+msgstr "Показати Rill"
+
+msgid "Source URI"
+msgstr "URI джерела"
+
+msgid "Start download immediately"
+msgstr "Почати завантаження негайно"
+
+msgid "Storage and Source"
+msgstr "Сховище та джерело"
+
+msgid "Torrent {id}"
+msgstr "Торент {id}"
+
+msgid "Trace"
+msgstr "Трасування"
+
+msgid "Trackers"
+msgstr "Трекери"
+
+msgid "Transfer Queue"
+msgstr "Черга передавання"
+
+msgid "Unknown File"
+msgstr "Невідомий файл"
+
+msgid "Upload Limit (KiB/s)"
+msgstr "Обмеження вивантаження (КіБ/с)"
+
+msgid "Upload Speed"
+msgstr "Швидкість вивантаження"
+
+msgid "Warn"
+msgstr "Попередження"
+
+msgid "_About Rill"
+msgstr "_Про Rill"
+
+msgid "_Add Magnet Link…"
+msgstr "Додати _magnet-посилання…"
+
+msgid "_Add Torrent File…"
+msgstr "Додати _торент-файл…"
+
+msgid "_Deselect all"
+msgstr "_Зняти вибір з усіх"
+
+msgid "_Open"
+msgstr "_Відкрити"
+
+msgid "_Pause"
+msgstr "_Призупинити"
+
+msgid "_Preferences"
+msgstr "_Налаштування"
+
+msgid "_Quit"
+msgstr "Ви_йти"
+
+msgid "_Remove"
+msgstr "_Вилучити"
+
+msgid "_Remove selected"
+msgstr "_Вилучити вибрані"
+
+msgid "_Resume"
+msgstr "_Відновити"
+
+msgid "_Select"
+msgstr "_Вибрати"
+
+msgid "_Start selected"
+msgstr "_Запустити вибрані"
+
+msgid "{count} selected"
+msgstr "Вибрано: {count}"
+
+msgid "{downloaded} of {total}"
+msgstr "{downloaded} з {total}"
+
+msgid "{downloaded} of {total}{speed} · {peers} peers"
+msgstr "{downloaded} з {total}{speed} · пірів: {peers}"
+
+msgid "{name} has finished downloading"
+msgstr "{name} завершено завантаження"

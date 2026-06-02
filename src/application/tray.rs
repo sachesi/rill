@@ -1,4 +1,5 @@
 use async_channel::{Receiver, Sender};
+use gettextrs::gettext;
 use ksni::menu::StandardItem;
 use ksni::{MenuItem, ToolTip, Tray};
 
@@ -31,7 +32,7 @@ impl Tray for RillTray {
     fn tool_tip(&self) -> ToolTip {
         ToolTip {
             title: "Rill".into(),
-            description: "BitTorrent client".into(),
+            description: gettext("BitTorrent client"),
             icon_name: "com.github.sachesi.rill".into(),
             icon_pixmap: Vec::new(),
         }
@@ -46,7 +47,7 @@ impl Tray for RillTray {
         let tx_quit = self.tx.clone();
         vec![
             StandardItem {
-                label: "Show Rill".into(),
+                label: gettext("Show Rill"),
                 icon_name: "go-up-symbolic".into(),
                 activate: Box::new(move |_: &mut Self| {
                     let _ = tx_show.try_send(TrayCommand::ShowWindow);
@@ -56,7 +57,7 @@ impl Tray for RillTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
-                label: "Quit".into(),
+                label: gettext("Quit"),
                 icon_name: "application-exit-symbolic".into(),
                 activate: Box::new(move |_: &mut Self| {
                     let _ = tx_quit.try_send(TrayCommand::QuitApp);

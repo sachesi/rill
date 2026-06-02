@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
+use gettextrs::gettext;
 use gtk::{gio, glib};
 
 
@@ -105,14 +106,14 @@ mod imp {
 
             let empty_page = adw::StatusPage::builder()
                 .icon_name("folder-download-symbolic")
-                .title("No Torrents")
+                .title(gettext("No Torrents"))
                 .description("Add a magnet link or .torrent file to get started")
                 .vexpand(true)
                 .hexpand(true)
                 .build();
 
             let dl_header = gtk::Label::builder()
-                .label("Downloading")
+                .label(gettext("Downloading"))
                 .halign(gtk::Align::Start)
                 .css_classes(["title-4"])
                 .margin_start(6)
@@ -127,7 +128,7 @@ mod imp {
                 .build();
 
             let pause_header = gtk::Label::builder()
-                .label("Paused")
+                .label(gettext("Paused"))
                 .halign(gtk::Align::Start)
                 .css_classes(["title-4"])
                 .margin_start(6)
@@ -142,7 +143,7 @@ mod imp {
                 .build();
 
             let done_header = gtk::Label::builder()
-                .label("Completed")
+                .label(gettext("Completed"))
                 .halign(gtk::Align::Start)
                 .css_classes(["title-4"])
                 .margin_start(6)
@@ -222,7 +223,7 @@ mod imp {
             let window_title = adw::WindowTitle::new("Rill", "");
 
             let cancel_btn = gtk::Button::builder()
-                .label("Cancel")
+                .label(gettext("Cancel"))
                 .visible(false)
                 .build();
 
@@ -234,7 +235,7 @@ mod imp {
             });
 
             let search_entry = gtk::SearchEntry::builder()
-                .placeholder_text("Search torrents…")
+                .placeholder_text(gettext("Search torrents…"))
                 .hexpand(true)
                 .build();
 
@@ -245,7 +246,7 @@ mod imp {
 
             let search_btn = gtk::ToggleButton::builder()
                 .icon_name("edit-find-symbolic")
-                .tooltip_text("Search Torrents")
+                .tooltip_text(gettext("Search Torrents"))
                 .build();
 
             search_btn
@@ -265,30 +266,30 @@ mod imp {
             });
 
             let add_menu = gio::Menu::new();
-            add_menu.append(Some("_Add Torrent File…"), Some("win.add-file"));
-            add_menu.append(Some("_Add Magnet Link…"), Some("win.add-magnet"));
+            add_menu.append(Some(gettext("_Add Torrent File…").as_str()), Some("win.add-file"));
+            add_menu.append(Some(gettext("_Add Magnet Link…").as_str()), Some("win.add-magnet"));
 
             let add_btn = gtk::MenuButton::builder()
                 .icon_name("list-add-symbolic")
-                .tooltip_text("Add Torrent")
+                .tooltip_text(gettext("Add Torrent"))
                 .menu_model(&add_menu)
                 .build();
 
             // Menu
             let menu = gio::Menu::new();
             let prefs_section = gio::Menu::new();
-            prefs_section.append(Some("_Preferences"), Some("app.preferences"));
+            prefs_section.append(Some(gettext("_Preferences").as_str()), Some("app.preferences"));
             menu.append_section(None, &prefs_section);
             let about_section = gio::Menu::new();
-            about_section.append(Some("_About Rill"), Some("app.about"));
-            about_section.append(Some("_Quit"), Some("app.quit"));
+            about_section.append(Some(gettext("_About Rill").as_str()), Some("app.about"));
+            about_section.append(Some(gettext("_Quit").as_str()), Some("app.quit"));
             menu.append_section(None, &about_section);
 
             let menu_btn = gtk::MenuButton::builder()
                 .icon_name("open-menu-symbolic")
                 .menu_model(&menu)
                 .primary(true)
-                .tooltip_text("Main Menu")
+                .tooltip_text(gettext("Main Menu"))
                 .build();
 
             let header_bar = adw::HeaderBar::builder()
@@ -582,20 +583,20 @@ impl RillWindow {
         };
 
         let delete_files_check = gtk::CheckButton::builder()
-            .label("Delete downloaded data files")
+            .label(gettext("Delete downloaded data files"))
             .active(false)
             .build();
 
         let dialog = adw::MessageDialog::builder()
             .transient_for(self)
             .modal(true)
-            .heading("Delete Torrent?")
-            .body(format!("Are you sure you want to delete \"{}\"? This action cannot be undone.", torrent_name))
+            .heading(gettext("Delete Torrent?"))
+            .body(gettext("Are you sure you want to delete \"{name}\"? This action cannot be undone.").replace("{name}", &torrent_name))
             .extra_child(&delete_files_check)
             .build();
 
-        dialog.add_response("cancel", "Cancel");
-        dialog.add_response("delete", "Delete");
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("delete", &gettext("Delete"));
         dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
@@ -794,7 +795,7 @@ impl RillWindow {
 
     fn add_torrent_file(&self) {
         let file_chooser = gtk::FileDialog::builder()
-            .title("Select Torrent File")
+            .title(gettext("Select Torrent File"))
             .modal(true)
             .build();
 
@@ -852,9 +853,10 @@ impl RillWindow {
                                     .map(|r| r.name())
                                     .unwrap_or_else(|| info_hash.clone());
                                 let notification =
-                                    gio::Notification::new("Download Complete");
+                                    gio::Notification::new(&gettext("Download Complete"));
                                 notification.set_body(Some(
-                                    &format!("{} has finished downloading", name),
+                                    &gettext("{name} has finished downloading")
+                                        .replace("{name}", &name),
                                 ));
                                 if let Some(app) = window.application() {
                                     app.send_notification(None, &notification);
@@ -1073,8 +1075,8 @@ impl RillWindow {
         let imp = self.imp();
         if let Some(title) = imp.window_title.borrow().as_ref() {
             let count = imp.selected_hashes.borrow().len();
-            title.set_title("Select Torrents");
-            title.set_subtitle(&format!("{} selected", count));
+            title.set_title(&gettext("Select Torrents"));
+            title.set_subtitle(&gettext("{count} selected").replace("{count}", &count.to_string()));
         }
     }
 
@@ -1153,7 +1155,7 @@ impl RillWindow {
         }
 
         let delete_files_check = gtk::CheckButton::builder()
-            .label("Delete downloaded data files")
+            .label(gettext("Delete downloaded data files"))
             .active(false)
             .build();
 
@@ -1161,13 +1163,13 @@ impl RillWindow {
         let dialog = adw::MessageDialog::builder()
             .transient_for(self)
             .modal(true)
-            .heading("Delete Selected Torrents?")
-            .body(format!("Are you sure you want to delete {} selected torrents? This action cannot be undone.", count))
+            .heading(gettext("Delete Selected Torrents?"))
+            .body(gettext("Are you sure you want to delete {count} selected torrents? This action cannot be undone.").replace("{count}", &count.to_string()))
             .extra_child(&delete_files_check)
             .build();
 
-        dialog.add_response("cancel", "Cancel");
-        dialog.add_response("delete", "Delete");
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("delete", &gettext("Delete"));
         dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");

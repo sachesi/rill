@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::{gio, glib};
 use gtk::subclass::prelude::*;
 
@@ -53,12 +54,12 @@ mod imp {
 
             // Cancel button
             let cancel_btn = gtk::Button::builder()
-                .label("Cancel")
+                .label(gettext("Cancel"))
                 .build();
 
             // Add button
             let add_btn = gtk::Button::builder()
-                .label("Add")
+                .label(gettext("Add"))
                 .css_classes(["suggested-action"])
                 .sensitive(false)
                 .build();
@@ -73,7 +74,7 @@ mod imp {
 
             // URL entry
             let url_entry = adw::EntryRow::builder()
-                .title("Magnet Link or HTTP URL")
+                .title(gettext("Magnet Link or HTTP URL"))
                 .build();
 
             let url_group = adw::PreferencesGroup::builder().build();
@@ -84,7 +85,7 @@ mod imp {
                 .icon_name("go-next-symbolic")
                 .build();
             let file_row = adw::ActionRow::builder()
-                .title("Browse for .torrent file")
+                .title(gettext("Browse for .torrent file"))
                 .activatable(true)
                 .build();
             file_row.add_suffix(&file_arrow);
@@ -97,23 +98,23 @@ mod imp {
                 .icon_name("go-next-symbolic")
                 .build();
             let download_folder_row = adw::ActionRow::builder()
-                .title("Download Folder")
+                .title(gettext("Download Folder"))
                 .activatable(true)
                 .build();
             download_folder_row.add_suffix(&folder_arrow);
 
             let start_immediately_switch = adw::SwitchRow::builder()
-                .title("Start download immediately")
+                .title(gettext("Start download immediately"))
                 .active(true)
                 .build();
 
             let sequential_switch = adw::SwitchRow::builder()
-                .title("Download from start to finish (sequential)")
+                .title(gettext("Download from start to finish (sequential)"))
                 .active(false)
                 .build();
 
             let options_group = adw::PreferencesGroup::builder()
-                .title("Options")
+                .title(gettext("Options"))
                 .build();
             options_group.add(&download_folder_row);
             options_group.add(&start_immediately_switch);
@@ -241,7 +242,7 @@ impl RillAddDialog {
     pub fn set_mode(&self, mode: AddMode) {
         match mode {
             AddMode::Magnet => {
-                self.set_title(Some("Add Torrent Link"));
+                self.set_title(Some(gettext("Add Torrent Link").as_str()));
                 if let Some(url_group) = self.imp().url_group.borrow().as_ref() {
                     url_group.set_visible(true);
                 }
@@ -251,7 +252,7 @@ impl RillAddDialog {
                 self.url_entry().grab_focus();
             }
             AddMode::File => {
-                self.set_title(Some("Add Torrent File"));
+                self.set_title(Some(gettext("Add Torrent File").as_str()));
                 if let Some(url_group) = self.imp().url_group.borrow().as_ref() {
                     url_group.set_visible(false);
                 }
@@ -292,7 +293,7 @@ impl RillAddDialog {
                 None => return,
             };
             let file_chooser = gtk::FileDialog::builder()
-                .title("Select Torrent File")
+                .title(gettext("Select Torrent File"))
                 .modal(true)
                 .build();
 
@@ -318,7 +319,7 @@ impl RillAddDialog {
                 None => return,
             };
             let folder_chooser = gtk::FileDialog::builder()
-                .title("Choose Download Folder")
+                .title(gettext("Choose Download Folder"))
                 .modal(true)
                 .build();
 

@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::{gio, glib};
 use gtk::subclass::prelude::*;
 
@@ -351,7 +352,7 @@ impl RillRow {
         imp.latest_update.replace(Some(update.clone()));
 
         let name = if update.name.is_empty() {
-            format!("Torrent {}", &update.info_hash[..8])
+            gettext("Torrent {id}").replace("{id}", &update.info_hash[..8])
         } else {
             update.name.clone()
         };
@@ -362,13 +363,11 @@ impl RillRow {
         } else {
             String::new()
         };
-        let status = format!(
-            "{} of {}{} · {} peers",
-            format_size(update.downloaded),
-            format_size(update.total),
-            speed,
-            update.peers
-        );
+        let status = gettext("{downloaded} of {total}{speed} · {peers} peers")
+            .replace("{downloaded}", &format_size(update.downloaded))
+            .replace("{total}", &format_size(update.total))
+            .replace("{speed}", &speed)
+            .replace("{peers}", &update.peers.to_string());
         self.status_lbl().set_text(&status);
 
         let fraction = if update.total > 0 {
@@ -408,11 +407,11 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
     let actions = gio::SimpleActionGroup::new();
 
     if is_selection {
-        menu.append(Some("Select _all"), Some("ctx.select_all"));
-        menu.append(Some("_Deselect all"), Some("ctx.deselect_all"));
-        menu.append(Some("_Start selected"), Some("ctx.start_selected"));
-        menu.append(Some("S_top selected"), Some("ctx.stop_selected"));
-        menu.append(Some("_Remove selected"), Some("ctx.remove_selected"));
+        menu.append(Some(gettext("Select _all").as_str()), Some("ctx.select_all"));
+        menu.append(Some(gettext("_Deselect all").as_str()), Some("ctx.deselect_all"));
+        menu.append(Some(gettext("_Start selected").as_str()), Some("ctx.start_selected"));
+        menu.append(Some(gettext("S_top selected").as_str()), Some("ctx.stop_selected"));
+        menu.append(Some(gettext("_Remove selected").as_str()), Some("ctx.remove_selected"));
 
         if let Some(old_popover) = imp.active_popover.borrow_mut().take() {
             old_popover.unparent();
@@ -514,18 +513,18 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
     } else {
         match state {
             TorrentUiState::Downloading => {
-                menu.append(Some("_Pause"), Some("ctx.pause"));
+                menu.append(Some(gettext("_Pause").as_str()), Some("ctx.pause"));
             }
             TorrentUiState::Paused => {
-                menu.append(Some("_Resume"), Some("ctx.resume"));
+                menu.append(Some(gettext("_Resume").as_str()), Some("ctx.resume"));
             }
             TorrentUiState::Completed | TorrentUiState::Error => {}
         }
         if content_dir.is_some() {
-            menu.append(Some("_Open"), Some("ctx.open"));
+            menu.append(Some(gettext("_Open").as_str()), Some("ctx.open"));
         }
-        menu.append(Some("_Select"), Some("ctx.select"));
-        menu.append(Some("_Remove"), Some("ctx.remove"));
+        menu.append(Some(gettext("_Select").as_str()), Some("ctx.select"));
+        menu.append(Some(gettext("_Remove").as_str()), Some("ctx.remove"));
 
         if let Some(old_popover) = imp.active_popover.borrow_mut().take() {
             old_popover.unparent();

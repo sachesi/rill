@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::path::Path;
 
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::{gio, glib};
 use gtk::subclass::prelude::*;
 
@@ -167,39 +168,39 @@ mod imp {
                 .build();
 
             let details_group = adw::PreferencesGroup::builder()
-                .title("Details")
+                .title(gettext("Details"))
                 .build();
 
             let speed_down_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
             let speed_down_row = adw::ActionRow::builder()
-                .title("Download Speed")
+                .title(gettext("Download Speed"))
                 .build();
             speed_down_row.add_suffix(&speed_down_lbl);
             details_group.add(&speed_down_row);
 
             let speed_up_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
             let speed_up_row = adw::ActionRow::builder()
-                .title("Upload Speed")
+                .title(gettext("Upload Speed"))
                 .build();
             speed_up_row.add_suffix(&speed_up_lbl);
             details_group.add(&speed_up_row);
 
             let peers_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
             let peers_row = adw::ActionRow::builder()
-                .title("Peers Count")
+                .title(gettext("Peers Count"))
                 .build();
             peers_row.add_suffix(&peers_lbl);
             details_group.add(&peers_row);
 
             let eta_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
             let eta_row = adw::ActionRow::builder()
-                .title("Estimated Time (ETA)")
+                .title(gettext("Estimated Time (ETA)"))
                 .build();
             eta_row.add_suffix(&eta_lbl);
             details_group.add(&eta_row);
 
             let paths_group = adw::PreferencesGroup::builder()
-                .title("Storage and Source")
+                .title(gettext("Storage and Source"))
                 .build();
 
             let source_lbl = gtk::Label::builder()
@@ -209,7 +210,7 @@ mod imp {
                 .max_width_chars(35)
                 .build();
             let source_row = adw::ActionRow::builder()
-                .title("Source URI")
+                .title(gettext("Source URI"))
                 .build();
             source_row.add_suffix(&source_lbl);
             paths_group.add(&source_row);
@@ -221,13 +222,13 @@ mod imp {
                 .max_width_chars(35)
                 .build();
             let save_path_row = adw::ActionRow::builder()
-                .title("Save Folder")
+                .title(gettext("Save Folder"))
                 .build();
             save_path_row.add_suffix(&save_path_lbl);
             paths_group.add(&save_path_row);
 
             let sequential_switch = adw::SwitchRow::builder()
-                .title("Download from start to finish (sequential)")
+                .title(gettext("Download from start to finish (sequential)"))
                 .active(false)
                 .build();
 
@@ -259,7 +260,7 @@ mod imp {
             });
 
             let options_group = adw::PreferencesGroup::builder()
-                .title("Options")
+                .title(gettext("Options"))
                 .build();
             options_group.add(&sequential_switch);
 
@@ -277,7 +278,7 @@ mod imp {
             view_stack.add_titled_with_icon(
                 &overview_scroll,
                 Some("overview"),
-                "Overview",
+                gettext("Overview").as_str(),
                 "dialog-information-symbolic",
             );
 
@@ -292,7 +293,7 @@ mod imp {
             files_box.set_margin_end(12);
 
             let files_heading = gtk::Label::builder()
-                .label("Contents")
+                .label(gettext("Contents"))
                 .css_classes(["heading"])
                 .halign(gtk::Align::Start)
                 .build();
@@ -359,7 +360,7 @@ mod imp {
             view_stack.add_titled_with_icon(
                 &files_box,
                 Some("files"),
-                "Files",
+                gettext("Files").as_str(),
                 "folder-symbolic",
             );
 
@@ -371,7 +372,7 @@ mod imp {
             peers_box.set_margin_end(12);
 
             let peers_group = adw::PreferencesGroup::builder()
-                .title("Connected Peers")
+                .title(gettext("Connected Peers"))
                 .build();
 
             let peers_list_box = gtk::ListBox::builder()
@@ -381,7 +382,7 @@ mod imp {
             
             // Empty placeholder for peers
             let peers_empty = gtk::Label::builder()
-                .label("No active peers connected.")
+                .label(gettext("No active peers connected."))
                 .css_classes(["dim-label"])
                 .halign(gtk::Align::Center)
                 .margin_top(24)
@@ -399,7 +400,7 @@ mod imp {
             view_stack.add_titled_with_icon(
                 &peers_scroll,
                 Some("peers"),
-                "Peers",
+                gettext("Peers").as_str(),
                 "avatar-default-symbolic",
             );
 
@@ -411,7 +412,7 @@ mod imp {
             trackers_box.set_margin_end(12);
 
             let trackers_group = adw::PreferencesGroup::builder()
-                .title("Trackers")
+                .title(gettext("Trackers"))
                 .build();
 
             let trackers_list_box = gtk::ListBox::builder()
@@ -429,7 +430,7 @@ mod imp {
             view_stack.add_titled_with_icon(
                 &trackers_scroll,
                 Some("trackers"),
-                "Trackers",
+                gettext("Trackers").as_str(),
                 "network-transmit-receive-symbolic",
             );
 
@@ -604,10 +605,10 @@ impl RillInfoDialog {
         };
 
         let state_text = match update.state {
-            TorrentUiState::Downloading => format!("Downloading ({:.1}%)", progress * 100.0),
-            TorrentUiState::Paused => format!("Paused ({:.1}%)", progress * 100.0),
-            TorrentUiState::Completed => "Completed".to_string(),
-            TorrentUiState::Error => "Error".to_string(),
+            TorrentUiState::Downloading => format!("{} ({:.1}%)", gettext("Downloading"), progress * 100.0),
+            TorrentUiState::Paused => format!("{} ({:.1}%)", gettext("Paused"), progress * 100.0),
+            TorrentUiState::Completed => gettext("Completed"),
+            TorrentUiState::Error => gettext("Error"),
         };
         self.state_lbl().set_text(&state_text);
 
@@ -620,11 +621,9 @@ impl RillInfoDialog {
         piece_bar.queue_draw();
 
         let size_text = if update.total > 0 {
-            format!(
-                "{} of {}",
-                format_size(update.downloaded),
-                format_size(update.total)
-            )
+            gettext("{downloaded} of {total}")
+                .replace("{downloaded}", &format_size(update.downloaded))
+                .replace("{total}", &format_size(update.total))
         } else {
             format_size(update.downloaded)
         };
@@ -640,7 +639,7 @@ impl RillInfoDialog {
         let eta_text = if update.state == TorrentUiState::Downloading && update.speed_down > 0 {
             format_eta(update.downloaded, update.total, update.speed_down)
         } else if update.state == TorrentUiState::Completed {
-            "Done".to_string()
+            gettext("Done")
         } else {
             "∞".to_string()
         };
@@ -770,7 +769,7 @@ impl RillInfoDialog {
                 .build();
 
             let status_badge = gtk::Label::builder()
-                .label("Connected")
+                .label(gettext("Connected"))
                 .css_classes(["success", "caption", "bold"])
                 .valign(gtk::Align::Center)
                 .build();
@@ -835,7 +834,7 @@ fn extract_files_from_meta(meta: &mtorrent::utils::re_exports::mtorrent_core::in
             });
         }
     } else {
-        let name = meta.name().unwrap_or("Unknown File").to_string();
+        let name = meta.name().unwrap_or(&gettext("Unknown File")).to_string();
         let len = meta.length().unwrap_or(0) as u64;
         files.push(TorrentFileInfo {
             path: name,

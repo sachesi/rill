@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::{gio, glib};
 
 use crate::engine::TorrentEngine;
@@ -161,7 +162,7 @@ impl RillApplication {
                     .version("0.1.6")
                     .developer_name("sachesi")
                     .license_type(gtk::License::MitX11)
-                    .comments("Minimalistic GTK4/Libadwaita BitTorrent client")
+                    .comments(gettext("Minimalistic GTK4/Libadwaita BitTorrent client"))
                     .application_icon("com.github.sachesi.rill")
                     .build();
                 if let Some(window) = app.active_window() {

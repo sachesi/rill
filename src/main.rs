@@ -39,6 +39,8 @@ fn main() {
         default_hook(info);
     }));
 
+    init_locale();
+
     gtk::init().expect("Failed to initialize GTK");
 
     // Register GResource
@@ -168,4 +170,31 @@ fn main() {
 
     let rill = RillApplication::new(app, engine, storage, saved_torrents);
     std::process::exit(rill.run().into());
+}
+
+/// Binds the `rill` gettext text domain so user-facing strings wrapped in
+/// `gettext()` are translated for the user's locale. The catalog directory is
+/// resolved in priority order: the `RILL_LOCALEDIR` override (for packagers and
+/// testing), the build-time dev directory populated by `build.rs` (so `cargo run`
+/// shows translations without installing), and finally the system locale
+/// directory used by an installed package.
+fn init_locale() {
+    use gettextrs::{LocaleCategory, bind_textdomain_codeset, bindtextdomain, setlocale, textdomain};
+
+    setlocale(LocaleCategory::LcAll, "");
+
+    let locale_dir = std::env::var("RILL_LOCALEDIR").ok().unwrap_or_else(|| {
+        match option_env!("RILL_LOCALEDIR_BUILD") {
+            Some(dir) if std::path::Path::new(dir).is_dir() => dir.to_string(),
+            _ => "/usr/share/locale".to_string(),
+        }
+    });
+
+    if let Err(e) = bindtextdomain("rill", &locale_dir) {
+        log::warn!("Failed to bind text domain at {}: {}", locale_dir, e);
+    }
+    let _ = bind_textdomain_codeset("rill", "UTF-8");
+    if let Err(e) = textdomain("rill") {
+        log::warn!("Failed to set text domain: {}", e);
+    }
 }

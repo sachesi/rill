@@ -1,0 +1,7 @@
+src/application/add_dialog.rs
+src/application/app.rs
+src/application/info_dialog.rs
+src/application/preferences.rs
+src/application/torrent_row.rs
+src/application/tray.rs
+src/application/window.rs

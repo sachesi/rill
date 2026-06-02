@@ -25,6 +25,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = "0.4"
 sha1 = "0.10"
 ksni = { version = "0.3.4", default-features = false, features = ["blocking", "async-io"] }
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
 
 [build-dependencies]
 glib-build-tools = "0.20"

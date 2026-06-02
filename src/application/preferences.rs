@@ -1,6 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::glib;
 
 use crate::logging;
@@ -8,7 +9,7 @@ use crate::storage::Storage;
 
 pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storage) {
     let prefs = adw::PreferencesWindow::builder()
-        .title("Preferences")
+        .title(gettext("Preferences"))
         .transient_for(parent)
         .modal(true)
         .build();
@@ -19,22 +20,22 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
 
     // General page
     let general_page = adw::PreferencesPage::builder()
-        .title("General")
+        .title(gettext("General"))
         .icon_name("preferences-system-symbolic")
         .build();
 
     let download_group = adw::PreferencesGroup::builder()
-        .title("Downloads")
+        .title(gettext("Downloads"))
         .build();
 
     let download_row = adw::ActionRow::builder()
-        .title("Download Folder")
+        .title(gettext("Download Folder"))
         .subtitle(current_folder.to_string_lossy().as_ref())
         .build();
 
     let folder_btn = gtk::Button::builder()
         .icon_name("folder-open-symbolic")
-        .tooltip_text("Choose Folder")
+        .tooltip_text(gettext("Choose Folder"))
         .valign(gtk::Align::Center)
         .css_classes(["flat"])
         .build();
@@ -47,7 +48,7 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         #[weak] prefs,
         move |_| {
             let dialog = gtk::FileDialog::builder()
-                .title("Choose Download Folder")
+                .title(gettext("Choose Download Folder"))
                 .modal(true)
                 .build();
 
@@ -88,18 +89,21 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
 
     // Logging page
     let logging_page = adw::PreferencesPage::builder()
-        .title("Logging")
+        .title(gettext("Logging"))
         .icon_name("dialog-information-symbolic")
         .build();
 
     let level_group = adw::PreferencesGroup::builder()
-        .title("Log Level")
-        .description("Controls how much detail is printed to the terminal")
+        .title(gettext("Log Level"))
         .build();
 
-    let log_model = gtk::StringList::new(&["Error", "Warn", "Info", "Debug", "Trace"]);
+    let log_levels =
+        [gettext("Error"), gettext("Warn"), gettext("Info"), gettext("Debug"), gettext("Trace")];
+    let log_model = gtk::StringList::new(
+        &log_levels.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
     let log_level_row = adw::ComboRow::builder()
-        .title("Log Level")
+        .title(gettext("Log Level"))
         .model(&log_model)
         .selected(match settings.log_level.as_str() {
             "error" => 0,
@@ -113,23 +117,28 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
     level_group.add(&log_level_row);
 
     let ops_switch = adw::SwitchRow::builder()
-        .title("Log Torrent Operations")
-        .subtitle("Log detailed start/stop/pause/resume events")
+        .title(gettext("Log Operations"))
         .active(settings.log_torrent_ops)
         .build();
+    ops_switch.set_tooltip_text(Some(&gettext("Log detailed start/stop/pause/resume events")));
     level_group.add(&ops_switch);
     logging_page.add(&level_group);
 
     // Wire log level changes
     let storage1 = storage.clone();
-    let log_model2 = log_model.clone();
     let parent_clone2 = parent.clone();
     log_level_row.connect_selected_notify(move |row| {
-        let idx = row.selected();
-        let level_str = log_model2
-            .string(idx)
-            .map(|s| s.to_lowercase().to_string())
-            .unwrap_or_else(|| "info".to_string());
+        // Map by index, not by displayed label, so the stored level stays stable
+        // regardless of the active translation.
+        let level_str = match row.selected() {
+            0 => "error",
+            1 => "warn",
+            2 => "info",
+            3 => "debug",
+            4 => "trace",
+            _ => "info",
+        }
+        .to_string();
 
         let mut settings = storage1.load_settings();
         settings.log_level = level_str;
@@ -155,12 +164,12 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
 
     // Network page
     let network_page = adw::PreferencesPage::builder()
-        .title("Network")
+        .title(gettext("Network"))
         .icon_name("network-wired-symbolic")
         .build();
 
     let limits_group = adw::PreferencesGroup::builder()
-        .title("Bandwidth Limits")
+        .title(gettext("Bandwidth Limits"))
         .build();
 
     let dl_limit_adj = gtk::Adjustment::new(
@@ -172,11 +181,11 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         0.0,
     );
     let dl_limit_row = adw::SpinRow::builder()
-        .title("Global Download Limit (KiB/s)")
-        .subtitle("0 means unlimited")
+        .title(gettext("Download Limit (KiB/s)"))
         .adjustment(&dl_limit_adj)
         .digits(0)
         .build();
+    dl_limit_row.set_tooltip_text(Some(&gettext("0 means unlimited")));
 
     let ul_limit_adj = gtk::Adjustment::new(
         settings.global_upload_limit as f64,
@@ -187,18 +196,18 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         0.0,
     );
     let ul_limit_row = adw::SpinRow::builder()
-        .title("Global Upload Limit (KiB/s)")
-        .subtitle("0 means unlimited")
+        .title(gettext("Upload Limit (KiB/s)"))
         .adjustment(&ul_limit_adj)
         .digits(0)
         .build();
+    ul_limit_row.set_tooltip_text(Some(&gettext("0 means unlimited")));
 
     limits_group.add(&dl_limit_row);
     limits_group.add(&ul_limit_row);
     network_page.add(&limits_group);
 
     let conn_group = adw::PreferencesGroup::builder()
-        .title("Connection")
+        .title(gettext("Connection"))
         .build();
 
     let port_adj = gtk::Adjustment::new(
@@ -210,17 +219,17 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         0.0,
     );
     let port_row = adw::SpinRow::builder()
-        .title("Peer Listening Port")
-        .subtitle("0 means random port")
+        .title(gettext("Listening Port"))
         .adjustment(&port_adj)
         .digits(0)
         .build();
+    port_row.set_tooltip_text(Some(&gettext("0 means random port")));
 
     conn_group.add(&port_row);
     network_page.add(&conn_group);
 
     let queue_group = adw::PreferencesGroup::builder()
-        .title("Transfer Queue")
+        .title(gettext("Transfer Queue"))
         .build();
 
     let max_dl_adj = gtk::Adjustment::new(
@@ -232,7 +241,7 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         0.0,
     );
     let max_dl_row = adw::SpinRow::builder()
-        .title("Max Active Downloads")
+        .title(gettext("Max Downloads"))
         .adjustment(&max_dl_adj)
         .digits(0)
         .build();
@@ -246,7 +255,7 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         0.0,
     );
     let max_ul_row = adw::SpinRow::builder()
-        .title("Max Active Uploads")
+        .title(gettext("Max Uploads"))
         .adjustment(&max_ul_adj)
         .digits(0)
         .build();
@@ -260,7 +269,7 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         0.0,
     );
     let ratio_row = adw::SpinRow::builder()
-        .title("Seeding Ratio Limit")
+        .title(gettext("Seeding Ratio"))
         .adjustment(&ratio_adj)
         .digits(1)
         .build();

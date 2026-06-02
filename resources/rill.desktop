@@ -1,6 +1,7 @@
 [Desktop Entry]
 Name=Rill
 Comment=Minimalistic BitTorrent client for GNOME
+Comment[uk]=Мінімалістичний клієнт BitTorrent для GNOME
 Exec=rill %U
 Icon=com.github.sachesi.rill
 Terminal=false

@@ -1,0 +1,302 @@
+# Translation template for rill.
+# Copyright (C) 2026 sachesi
+# This file is distributed under the same license as the rill package.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: rill\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-02 00:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "0 means random port"
+msgstr ""
+
+msgid "0 means unlimited"
+msgstr ""
+
+msgid "Add"
+msgstr ""
+
+msgid "Add Torrent"
+msgstr ""
+
+msgid "Add Torrent File"
+msgstr ""
+
+msgid "Add Torrent Link"
+msgstr ""
+
+msgid "Are you sure you want to delete \"{name}\"? This action cannot be undone."
+msgstr ""
+
+msgid "Are you sure you want to delete {count} selected torrents? This action cannot be undone."
+msgstr ""
+
+msgid "Bandwidth Limits"
+msgstr ""
+
+msgid "BitTorrent client"
+msgstr ""
+
+msgid "Browse for .torrent file"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Choose Download Folder"
+msgstr ""
+
+msgid "Choose Folder"
+msgstr ""
+
+msgid "Completed"
+msgstr ""
+
+msgid "Connected"
+msgstr ""
+
+msgid "Connected Peers"
+msgstr ""
+
+msgid "Connection"
+msgstr ""
+
+msgid "Contents"
+msgstr ""
+
+msgid "Debug"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Delete Selected Torrents?"
+msgstr ""
+
+msgid "Delete Torrent?"
+msgstr ""
+
+msgid "Delete downloaded data files"
+msgstr ""
+
+msgid "Details"
+msgstr ""
+
+msgid "Done"
+msgstr ""
+
+msgid "Download Complete"
+msgstr ""
+
+msgid "Download Folder"
+msgstr ""
+
+msgid "Download Limit (KiB/s)"
+msgstr ""
+
+msgid "Download Speed"
+msgstr ""
+
+msgid "Download from start to finish (sequential)"
+msgstr ""
+
+msgid "Downloading"
+msgstr ""
+
+msgid "Downloads"
+msgstr ""
+
+msgid "Error"
+msgstr ""
+
+msgid "Estimated Time (ETA)"
+msgstr ""
+
+msgid "Files"
+msgstr ""
+
+msgid "General"
+msgstr ""
+
+msgid "Info"
+msgstr ""
+
+msgid "Listening Port"
+msgstr ""
+
+msgid "Log Level"
+msgstr ""
+
+msgid "Log Operations"
+msgstr ""
+
+msgid "Log detailed start/stop/pause/resume events"
+msgstr ""
+
+msgid "Logging"
+msgstr ""
+
+msgid "Magnet Link or HTTP URL"
+msgstr ""
+
+msgid "Main Menu"
+msgstr ""
+
+msgid "Max Downloads"
+msgstr ""
+
+msgid "Max Uploads"
+msgstr ""
+
+msgid "Minimalistic GTK4/Libadwaita BitTorrent client"
+msgstr ""
+
+msgid "Network"
+msgstr ""
+
+msgid "No Torrents"
+msgstr ""
+
+msgid "No active peers connected."
+msgstr ""
+
+msgid "Options"
+msgstr ""
+
+msgid "Overview"
+msgstr ""
+
+msgid "Paused"
+msgstr ""
+
+msgid "Peers"
+msgstr ""
+
+msgid "Peers Count"
+msgstr ""
+
+msgid "Preferences"
+msgstr ""
+
+msgid "Quit"
+msgstr ""
+
+msgid "S_top selected"
+msgstr ""
+
+msgid "Save Folder"
+msgstr ""
+
+msgid "Search Torrents"
+msgstr ""
+
+msgid "Search torrents…"
+msgstr ""
+
+msgid "Seeding Ratio"
+msgstr ""
+
+msgid "Select Torrent File"
+msgstr ""
+
+msgid "Select Torrents"
+msgstr ""
+
+msgid "Select _all"
+msgstr ""
+
+msgid "Show Rill"
+msgstr ""
+
+msgid "Source URI"
+msgstr ""
+
+msgid "Start download immediately"
+msgstr ""
+
+msgid "Storage and Source"
+msgstr ""
+
+msgid "Torrent {id}"
+msgstr ""
+
+msgid "Trace"
+msgstr ""
+
+msgid "Trackers"
+msgstr ""
+
+msgid "Transfer Queue"
+msgstr ""
+
+msgid "Unknown File"
+msgstr ""
+
+msgid "Upload Limit (KiB/s)"
+msgstr ""
+
+msgid "Upload Speed"
+msgstr ""
+
+msgid "Warn"
+msgstr ""
+
+msgid "_About Rill"
+msgstr ""
+
+msgid "_Add Magnet Link…"
+msgstr ""
+
+msgid "_Add Torrent File…"
+msgstr ""
+
+msgid "_Deselect all"
+msgstr ""
+
+msgid "_Open"
+msgstr ""
+
+msgid "_Pause"
+msgstr ""
+
+msgid "_Preferences"
+msgstr ""
+
+msgid "_Quit"
+msgstr ""
+
+msgid "_Remove"
+msgstr ""
+
+msgid "_Remove selected"
+msgstr ""
+
+msgid "_Resume"
+msgstr ""
+
+msgid "_Select"
+msgstr ""
+
+msgid "_Start selected"
+msgstr ""
+
+msgid "{count} selected"
+msgstr ""
+
+msgid "{downloaded} of {total}"
+msgstr ""
+
+msgid "{downloaded} of {total}{speed} · {peers} peers"
+msgstr ""
+
+msgid "{name} has finished downloading"
+msgstr ""
