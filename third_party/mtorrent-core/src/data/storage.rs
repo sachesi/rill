@@ -3,7 +3,7 @@ use crate::pwp;
 use mtorrent_utils::warn_stopwatch;
 use sha1_smol::Sha1;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::{cmp, fs, io};
 use tokio::sync::{mpsc, oneshot};
 
@@ -265,6 +265,16 @@ impl Storage {
         length_path_it: I,
     ) -> Result<Self, Error> {
         let open_file = |(length, path): (usize, PathBuf)| -> io::Result<(usize, fs::File)> {
+            if path.is_absolute()
+                || path
+                    .components()
+                    .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "torrent file path escapes the download directory",
+                ));
+            }
             let path = parent_dir.as_ref().join(path);
             if let Some(prefix) = path.parent() {
                 fs::create_dir_all(prefix)?;
@@ -465,6 +475,35 @@ mod tests {
         {
             Ok(self.clone())
         }
+    }
+
+    #[test]
+    fn test_new_rejects_path_traversal() {
+        let parent = std::env::temp_dir();
+
+        // Relative `..` escape and absolute paths must be rejected before any file is touched.
+        for bad in ["../escape", "a/../../escape", "/etc/passwd"] {
+            let err = Storage::new(&parent, iter::once((4usize, PathBuf::from(bad))))
+                .err()
+                .unwrap_or_else(|| panic!("expected rejection for {bad}"));
+            let io_err = match err {
+                Error::IOError(e) => e,
+                other => panic!("expected io error for {bad}, got {other:?}"),
+            };
+            assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput, "{bad}");
+        }
+    }
+
+    #[test]
+    fn test_new_accepts_contained_paths() {
+        let dir = std::env::temp_dir().join(format!("mtorrent_storage_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+
+        // Plain and nested relative paths stay inside the parent dir and must succeed.
+        Storage::new(&dir, iter::once((4usize, PathBuf::from("movie.mp4")))).unwrap();
+        Storage::new(&dir, iter::once((4usize, PathBuf::from("sub/dir/f.bin")))).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
