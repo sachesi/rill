@@ -159,7 +159,7 @@ impl RillApplication {
             move |_, _| {
                 let about = adw::AboutWindow::builder()
                     .application_name("Rill")
-                    .version("0.1.7")
+                    .version("0.1.8")
                     .developer_name("sachesi")
                     .license_type(gtk::License::MitX11)
                     .comments(gettext("Minimalistic GTK4/Libadwaita BitTorrent client"))
