@@ -300,3 +300,9 @@ msgstr "{downloaded} з {total}{speed} · пірів: {peers}"
 
 msgid "{name} has finished downloading"
 msgstr "{name} завершено завантаження"
+
+msgid "Click to copy"
+msgstr "Натисніть, щоб скопіювати"
+
+msgid "Copied to clipboard"
+msgstr "Скопійовано до буфера обміну"

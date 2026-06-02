@@ -12,6 +12,8 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         .title(gettext("Preferences"))
         .transient_for(parent)
         .modal(true)
+        .default_width(380)
+        .default_height(480)
         .build();
 
     // Load current settings

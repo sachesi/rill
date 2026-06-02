@@ -92,6 +92,8 @@ mod imp {
                 .title_widget(&view_switcher)
                 .build();
 
+            let toast_overlay = adw::ToastOverlay::new();
+
             // --- 1. OVERVIEW PAGE ---
             let overview_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
             overview_box.set_margin_top(16);
@@ -206,13 +208,22 @@ mod imp {
             let source_lbl = gtk::Label::builder()
                 .css_classes(["body", "caption", "dim-label"])
                 .ellipsize(gtk::pango::EllipsizeMode::Middle)
-                .selectable(true)
                 .max_width_chars(35)
                 .build();
             let source_row = adw::ActionRow::builder()
                 .title(gettext("Source URI"))
+                .activatable(true)
+                .tooltip_text(gettext("Click to copy"))
                 .build();
             source_row.add_suffix(&source_lbl);
+            // Copy the source URI (magnet link / URL) to the clipboard on click,
+            // confirming with a toast.
+            let source_lbl_copy = source_lbl.clone();
+            let toast_overlay_copy = toast_overlay.clone();
+            source_row.connect_activated(move |row| {
+                row.clipboard().set_text(source_lbl_copy.text().as_str());
+                toast_overlay_copy.add_toast(adw::Toast::new(&gettext("Copied to clipboard")));
+            });
             paths_group.add(&source_row);
 
             let save_path_lbl = gtk::Label::builder()
@@ -439,7 +450,8 @@ mod imp {
             toolbar_view.add_top_bar(&header_bar);
             toolbar_view.set_content(Some(&view_stack));
 
-            obj.set_content(Some(&toolbar_view));
+            toast_overlay.set_child(Some(&toolbar_view));
+            obj.set_content(Some(&toast_overlay));
 
             // Store references
             self.title_lbl.replace(Some(title_lbl));

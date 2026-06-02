@@ -300,3 +300,9 @@ msgstr ""
 
 msgid "{name} has finished downloading"
 msgstr ""
+
+msgid "Click to copy"
+msgstr ""
+
+msgid "Copied to clipboard"
+msgstr ""
