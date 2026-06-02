@@ -70,6 +70,11 @@ install: target/release/rill ## Install under $(PREFIX) (set DESTDIR for staging
 	install -m 644 $(ICON_SRC) $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$(ICON_NAME)
 	install -d $(DESTDIR)$(PREFIX)/share/icons/hicolor/symbolic/apps
 	install -m 644 $(SYM_ICON_SRC) $(DESTDIR)$(PREFIX)/share/icons/hicolor/symbolic/apps/$(SYM_ICON_NAME)
+	@for po in po/*.po; do \
+	  lang=$$(basename $$po .po); \
+	  install -d $(DESTDIR)$(PREFIX)/share/locale/$$lang/LC_MESSAGES; \
+	  msgfmt $$po -o $(DESTDIR)$(PREFIX)/share/locale/$$lang/LC_MESSAGES/rill.mo; \
+	done
 	-gtk-update-icon-cache -f -t $(DESTDIR)$(PREFIX)/share/icons/hicolor
 	-update-desktop-database $(DESTDIR)$(PREFIX)/share/applications
 	@echo "✓ Installed. Run 'rill' to start."
@@ -81,6 +86,10 @@ uninstall: ## Remove installed files
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/$(DESKTOP_NAME)
 	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$(ICON_NAME)
 	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/symbolic/apps/$(SYM_ICON_NAME)
+	@for po in po/*.po; do \
+	  lang=$$(basename $$po .po); \
+	  rm -f $(DESTDIR)$(PREFIX)/share/locale/$$lang/LC_MESSAGES/rill.mo; \
+	done
 	-gtk-update-icon-cache -f -t $(DESTDIR)$(PREFIX)/share/icons/hicolor
 	-update-desktop-database $(DESTDIR)$(PREFIX)/share/applications
 	@echo "✓ Uninstalled."
