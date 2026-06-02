@@ -389,6 +389,13 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
     let engine = imp.engine.borrow().as_ref().cloned();
     let _tx = imp.tx.borrow().clone();
 
+    // Directory holding this torrent's content: the per-torrent folder for
+    // multi-file torrents, falling back to the download dir for single-file ones.
+    let content_dir = imp.latest_update.borrow().as_ref().map(|u| {
+        let dir = u.output_dir.join(&u.name);
+        if dir.is_dir() { dir } else { u.output_dir.clone() }
+    });
+
     let is_selection = if let Some(root) = row.root()
         && let Ok(window) = root.downcast::<crate::application::RillWindow>()
     {
@@ -514,6 +521,9 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
             }
             TorrentUiState::Completed | TorrentUiState::Error => {}
         }
+        if content_dir.is_some() {
+            menu.append(Some("_Open"), Some("ctx.open"));
+        }
         menu.append(Some("_Select"), Some("ctx.select"));
         menu.append(Some("_Remove"), Some("ctx.remove"));
 
@@ -594,6 +604,33 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
                     window.delete_torrent(&h);
                 }
                 if let Some(p) = p_weak_clone.upgrade() {
+                    p.popdown();
+                }
+            });
+            actions.add_action(&a);
+        }
+
+        if let Some(dir) = content_dir {
+            let p_weak = popover.downgrade();
+            let row_weak = row.downgrade();
+            let a = gio::SimpleAction::new("open", None);
+            a.connect_activate(move |_, _| {
+                let file = gio::File::for_path(&dir);
+                let launcher = gtk::FileLauncher::new(Some(&file));
+                let parent = row_weak
+                    .upgrade()
+                    .and_then(|r| r.root())
+                    .and_downcast::<gtk::Window>();
+                launcher.launch(
+                    parent.as_ref(),
+                    gio::Cancellable::NONE,
+                    |res| {
+                        if let Err(e) = res {
+                            log::warn!("Failed to open torrent directory: {}", e);
+                        }
+                    },
+                );
+                if let Some(p) = p_weak.upgrade() {
                     p.popdown();
                 }
             });
