@@ -42,16 +42,21 @@ impl Storage {
         // The worker owns its own handle (sharing the same db Arc + sender) so it
         // can run the high-level methods that closures call. The thread lives for
         // the whole process; jobs are drained in FIFO order, serializing SQLite.
-        let worker_storage = Storage { db: db.clone(), worker: tx.clone() };
+        let worker_storage = Storage {
+            db: db.clone(),
+            worker: tx.clone(),
+        };
         std::thread::Builder::new()
             .name("storage-worker".into())
             .spawn(move || {
                 while let Ok(job) = rx.recv() {
                     match job {
                         Job::Run(f) => {
-                            if let Err(e) = std::panic::catch_unwind(
-                                std::panic::AssertUnwindSafe(|| f(&worker_storage)),
-                            ) {
+                            if let Err(e) =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    f(&worker_storage)
+                                }))
+                            {
                                 log::error!("Storage worker job panicked: {:?}", e);
                             }
                         }
@@ -89,7 +94,8 @@ impl Storage {
         self.execute(move |s| {
             let _ = otx.send(f(s));
         });
-        orx.await.map_err(|_| "Storage worker dropped query".to_string())
+        orx.await
+            .map_err(|_| "Storage worker dropped query".to_string())
     }
 
     /// Block until the worker has drained every job queued before this call.
@@ -142,7 +148,15 @@ impl Storage {
     ) -> Result<(), String> {
         let now = chrono::Utc::now().timestamp();
         self.db()
-            .update_torrent_state(info_hash, state, downloaded, total, total_pieces, downloaded_pieces, now)
+            .update_torrent_state(
+                info_hash,
+                state,
+                downloaded,
+                total,
+                total_pieces,
+                downloaded_pieces,
+                now,
+            )
             .map_err(|e| format!("Failed to update torrent: {}", e))
     }
 
@@ -162,7 +176,11 @@ impl Storage {
     }
 
     /// Update torrent sequential flag
-    pub fn update_torrent_sequential(&self, info_hash: &str, sequential: bool) -> Result<(), String> {
+    pub fn update_torrent_sequential(
+        &self,
+        info_hash: &str,
+        sequential: bool,
+    ) -> Result<(), String> {
         self.db()
             .update_torrent_sequential(info_hash, sequential)
             .map_err(|e| format!("Failed to update torrent sequential flag: {}", e))

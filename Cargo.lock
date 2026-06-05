@@ -2301,7 +2301,7 @@ dependencies = [
 
 [[package]]
 name = "rill"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-channel",
  "chrono",

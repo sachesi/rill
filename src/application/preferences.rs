@@ -47,7 +47,8 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
     let download_row_weak = download_row.downgrade();
     let parent_clone1 = parent.clone();
     folder_btn.connect_clicked(glib::clone!(
-        #[weak] prefs,
+        #[weak]
+        prefs,
         move |_| {
             let dialog = gtk::FileDialog::builder()
                 .title(gettext("Choose Download Folder"))
@@ -57,30 +58,26 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
             let storage_clone2 = storage_clone.clone();
             let download_row_weak2 = download_row_weak.clone();
             let parent_clone1 = parent_clone1.clone();
-            dialog.select_folder(
-                Some(&prefs),
-                gtk::gio::Cancellable::NONE,
-                move |result| {
-                    if let Ok(file) = result
-                        && let Some(path) = file.path()
-                    {
-                        // Update subtitle
-                        if let Some(row) = download_row_weak2.upgrade() {
-                            row.set_subtitle(&path.to_string_lossy());
-                        }
-                        
-                        // Save to storage
-                        let mut settings = storage_clone2.load_settings();
-                        settings.download_folder = path.to_string_lossy().to_string();
-                        if let Err(e) = storage_clone2.save_settings(&settings) {
-                            log::warn!("Failed to save settings: {}", e);
-                            parent_clone1.show_toast(&format!("Failed to save download folder: {}", e));
-                        } else {
-                            log::info!("Download folder updated: {}", path.display());
-                        }
+            dialog.select_folder(Some(&prefs), gtk::gio::Cancellable::NONE, move |result| {
+                if let Ok(file) = result
+                    && let Some(path) = file.path()
+                {
+                    // Update subtitle
+                    if let Some(row) = download_row_weak2.upgrade() {
+                        row.set_subtitle(&path.to_string_lossy());
                     }
-                },
-            );
+
+                    // Save to storage
+                    let mut settings = storage_clone2.load_settings();
+                    settings.download_folder = path.to_string_lossy().to_string();
+                    if let Err(e) = storage_clone2.save_settings(&settings) {
+                        log::warn!("Failed to save settings: {}", e);
+                        parent_clone1.show_toast(&format!("Failed to save download folder: {}", e));
+                    } else {
+                        log::info!("Download folder updated: {}", path.display());
+                    }
+                }
+            });
         }
     ));
 
@@ -99,11 +96,15 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         .title(gettext("Log Level"))
         .build();
 
-    let log_levels =
-        [gettext("Error"), gettext("Warn"), gettext("Info"), gettext("Debug"), gettext("Trace")];
-    let log_model = gtk::StringList::new(
-        &log_levels.iter().map(String::as_str).collect::<Vec<_>>(),
-    );
+    let log_levels = [
+        gettext("Error"),
+        gettext("Warn"),
+        gettext("Info"),
+        gettext("Debug"),
+        gettext("Trace"),
+    ];
+    let log_model =
+        gtk::StringList::new(&log_levels.iter().map(String::as_str).collect::<Vec<_>>());
     let log_level_row = adw::ComboRow::builder()
         .title(gettext("Log Level"))
         .model(&log_model)
@@ -122,7 +123,9 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         .title(gettext("Log Operations"))
         .active(settings.log_torrent_ops)
         .build();
-    ops_switch.set_tooltip_text(Some(&gettext("Log detailed start/stop/pause/resume events")));
+    ops_switch.set_tooltip_text(Some(&gettext(
+        "Log detailed start/stop/pause/resume events",
+    )));
     level_group.add(&ops_switch);
     logging_page.add(&level_group);
 
@@ -212,14 +215,7 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         .title(gettext("Connection"))
         .build();
 
-    let port_adj = gtk::Adjustment::new(
-        settings.pwp_port as f64,
-        0.0,
-        65535.0,
-        1.0,
-        10.0,
-        0.0,
-    );
+    let port_adj = gtk::Adjustment::new(settings.pwp_port as f64, 0.0, 65535.0, 1.0, 10.0, 0.0);
     let port_row = adw::SpinRow::builder()
         .title(gettext("Listening Port"))
         .adjustment(&port_adj)
@@ -248,28 +244,15 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         .digits(0)
         .build();
 
-    let max_ul_adj = gtk::Adjustment::new(
-        settings.max_active_uploads as f64,
-        1.0,
-        50.0,
-        1.0,
-        5.0,
-        0.0,
-    );
+    let max_ul_adj =
+        gtk::Adjustment::new(settings.max_active_uploads as f64, 1.0, 50.0, 1.0, 5.0, 0.0);
     let max_ul_row = adw::SpinRow::builder()
         .title(gettext("Max Uploads"))
         .adjustment(&max_ul_adj)
         .digits(0)
         .build();
 
-    let ratio_adj = gtk::Adjustment::new(
-        settings.seeding_ratio_limit,
-        0.0,
-        100.0,
-        0.1,
-        1.0,
-        0.0,
-    );
+    let ratio_adj = gtk::Adjustment::new(settings.seeding_ratio_limit, 0.0, 100.0, 0.1, 1.0, 0.0);
     let ratio_row = adw::SpinRow::builder()
         .title(gettext("Seeding Ratio"))
         .adjustment(&ratio_adj)

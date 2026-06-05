@@ -5,12 +5,12 @@ use adw::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
 
-use crate::engine::TorrentEngine;
-use crate::model::TorrentModel;
-use crate::storage::{Storage, SavedTorrent};
 use super::RillWindow;
 use super::show_preferences;
 use super::tray::{self, TrayCommand};
+use crate::engine::TorrentEngine;
+use crate::model::TorrentModel;
+use crate::storage::{SavedTorrent, Storage};
 
 pub struct RillApplication {
     app: adw::Application,
@@ -50,15 +50,19 @@ impl RillApplication {
 
         // System tray: drives show/quit while the window is hidden.
         app_self.setup_tray();
-        
+
         // Connect activate signal
         let storage_clone1 = storage.clone();
         let saved_torrents_clone1 = app_self.saved_torrents.clone();
         app.connect_activate(glib::clone!(
-            #[weak] engine,
-            #[weak] model,
+            #[weak]
+            engine,
+            #[weak]
+            model,
             move |app| {
-                let existing_window = app.windows().into_iter()
+                let existing_window = app
+                    .windows()
+                    .into_iter()
                     .find_map(|win| win.downcast::<RillWindow>().ok());
 
                 if let Some(window) = existing_window {
@@ -80,10 +84,14 @@ impl RillApplication {
         let storage_clone2 = storage.clone();
         let saved_torrents_clone2 = app_self.saved_torrents.clone();
         app.connect_open(glib::clone!(
-            #[weak] engine,
-            #[weak] model,
+            #[weak]
+            engine,
+            #[weak]
+            model,
             move |app, files, _hint| {
-                let existing_window = app.windows().into_iter()
+                let existing_window = app
+                    .windows()
+                    .into_iter()
                     .find_map(|win| win.downcast::<RillWindow>().ok());
 
                 let window = if let Some(window) = existing_window {
@@ -125,12 +133,16 @@ impl RillApplication {
         // Connect shutdown signal to pause all torrents on exit
         let storage_clone_shutdown = storage.clone();
         app.connect_shutdown(glib::clone!(
-            #[weak] engine,
+            #[weak]
+            engine,
             move |_app| {
                 log::info!("Application is shutting down. Pausing all torrents...");
                 engine.borrow().pause_all();
                 if let Err(e) = storage_clone_shutdown.pause_all_torrents() {
-                    log::error!("Failed to pause torrents in database during shutdown: {}", e);
+                    log::error!(
+                        "Failed to pause torrents in database during shutdown: {}",
+                        e
+                    );
                 }
                 // Drain the storage worker so every queued write (state snapshots,
                 // the pause_all update above) reaches disk before the process exits.
@@ -146,20 +158,22 @@ impl RillApplication {
         // Quit action
         let quit_action = gio::SimpleAction::new("quit", None);
         quit_action.connect_activate(glib::clone!(
-            #[weak(rename_to = app)] self.app,
+            #[weak(rename_to = app)]
+            self.app,
             move |_, _| app.quit()
         ));
         self.app.add_action(&quit_action);
         self.app.set_accels_for_action("app.quit", &["<Control>q"]);
 
-        // About action  
+        // About action
         let about_action = gio::SimpleAction::new("about", None);
         about_action.connect_activate(glib::clone!(
-            #[weak(rename_to = app)] self.app,
+            #[weak(rename_to = app)]
+            self.app,
             move |_, _| {
                 let about = adw::AboutWindow::builder()
                     .application_name("Rill")
-                    .version("0.1.8")
+                    .version("0.1.9")
                     .developer_name("sachesi")
                     .license_type(gtk::License::MitX11)
                     .comments(gettext("Minimalistic GTK4/Libadwaita BitTorrent client"))
@@ -173,7 +187,7 @@ impl RillApplication {
         ));
         self.app.add_action(&about_action);
 
-        // Preferences action  
+        // Preferences action
         let prefs_action = gio::SimpleAction::new("preferences", None);
         let app_weak = self.app.downgrade();
         let storage_clone = self.storage.clone();
@@ -182,14 +196,12 @@ impl RillApplication {
                 && let Some(window) = app.active_window()
                 && let Ok(rill_window) = window.downcast::<RillWindow>()
             {
-                show_preferences(
-                    &rill_window,
-                    storage_clone.clone(),
-                );
+                show_preferences(&rill_window, storage_clone.clone());
             }
         });
         self.app.add_action(&prefs_action);
-        self.app.set_accels_for_action("app.preferences", &["<Control>comma"]);
+        self.app
+            .set_accels_for_action("app.preferences", &["<Control>comma"]);
 
         // Add torrent action
         let add_action = gio::SimpleAction::new("add-torrent", None);
@@ -203,7 +215,8 @@ impl RillApplication {
             }
         });
         self.app.add_action(&add_action);
-        self.app.set_accels_for_action("app.add-torrent", &["<Control>n"]);
+        self.app
+            .set_accels_for_action("app.add-torrent", &["<Control>n"]);
     }
 
     fn setup_tray(&self) {

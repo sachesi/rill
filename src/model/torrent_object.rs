@@ -1,8 +1,8 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 
-use gtk::glib;
 use glib::subclass::prelude::*;
+use gtk::glib;
 
 use crate::engine::TorrentUiState;
 use crate::util::format_size;
@@ -12,7 +12,7 @@ use crate::util::format_size;
 pub enum TorrentState {
     #[default]
     Downloading,
-    Paused, 
+    Paused,
     Completed,
     Error,
 }
@@ -200,15 +200,15 @@ impl TorrentObject {
     /// Get status text combining speed and peers
     pub fn status_text(&self) -> String {
         let mut parts = Vec::new();
-        
+
         if self.speed_down() > 0 {
             parts.push(format!("↓ {}/s", format_size(self.speed_down())));
         }
-        
+
         if self.peers() > 0 {
             parts.push(format!("{} peers", self.peers()));
         }
-        
+
         match self.state() {
             TorrentState::Downloading => {
                 if parts.is_empty() {

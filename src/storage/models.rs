@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Serializable torrent record for database storage
 #[derive(Debug, Clone, Serialize, Deserialize)]

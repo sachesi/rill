@@ -107,7 +107,11 @@ const STATE_FILENAME: &str = ".mtorrent";
 /// Reads the live piece bitfield mtorrent persists each interval and downsamples
 /// it to a fixed-width fill map (0..=255 per segment, in piece order). The
 /// bitfield is big-endian (piece 0 = most significant bit of the first byte).
-fn build_piece_map(state_dir: &std::path::Path, info_hash: &[u8; 20], total_pieces: usize) -> Vec<u8> {
+fn build_piece_map(
+    state_dir: &std::path::Path,
+    info_hash: &[u8; 20],
+    total_pieces: usize,
+) -> Vec<u8> {
     use mtorrent::utils::re_exports::mtorrent_utils::benc::Element;
 
     if total_pieces == 0 {
@@ -137,8 +141,8 @@ fn build_piece_map(state_dir: &std::path::Path, info_hash: &[u8; 20], total_piec
         let end = ((b + 1) * n / buckets).max(start + 1).min(n);
         let have = (start..end).filter(|&i| has_piece(i)).count();
         let tot = end - start;
-        if tot > 0 {
-            *slot = (have * 255 / tot) as u8;
+        if let Some(fill) = (have * 255).checked_div(tot) {
+            *slot = fill as u8;
         }
     }
     out
@@ -180,7 +184,9 @@ impl StateListener for GtkListener {
             self.info_hash_resolved = true;
         }
 
-        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) || self.canceller.strong_count() < 2 {
+        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)
+            || self.canceller.strong_count() < 2
+        {
             log::debug!("Listener cancelled for: {}", self.info_hash);
             let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
                 info_hash: self.info_hash.clone(),
@@ -229,7 +235,12 @@ impl StateListener for GtkListener {
         self.last_time = Some(now);
 
         let state = if downloaded >= total && total > 0 {
-            log::trace!("Torrent completed: {} ({}/{})", self.info_hash, downloaded, total);
+            log::trace!(
+                "Torrent completed: {} ({}/{})",
+                self.info_hash,
+                downloaded,
+                total
+            );
             TorrentUiState::Completed
         } else {
             TorrentUiState::Downloading
@@ -238,7 +249,9 @@ impl StateListener for GtkListener {
         let mut peers_list = Vec::new();
         let mut speed_up = 0u64;
         for (addr, p_state) in &snapshot.peers {
-            let client = p_state.extensions.as_ref()
+            let client = p_state
+                .extensions
+                .as_ref()
                 .and_then(|ext| ext.client_type.as_deref())
                 .unwrap_or("n/a")
                 .to_string();

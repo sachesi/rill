@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gettextrs::gettext;
-use gtk::{gio, glib};
 use gtk::subclass::prelude::*;
+use gtk::{gio, glib};
 
 use async_channel::Sender;
 
@@ -191,14 +191,14 @@ impl RillRow {
     }
 
     pub fn is_selected(&self) -> bool {
-        self.imp().check_btn.borrow().as_ref().map_or(false, |chk| chk.is_active())
+        self.imp()
+            .check_btn
+            .borrow()
+            .as_ref()
+            .is_some_and(|chk| chk.is_active())
     }
 
-    pub fn new(
-        info_hash: String,
-        engine: Rc<RefCell<TorrentEngine>>,
-        tx: Sender<UiEvent>,
-    ) -> Self {
+    pub fn new(info_hash: String, engine: Rc<RefCell<TorrentEngine>>, tx: Sender<UiEvent>) -> Self {
         let row: Self = glib::Object::builder().build();
 
         let imp = row.imp();
@@ -207,9 +207,7 @@ impl RillRow {
         imp.tx.replace(Some(tx));
 
         // Right-click context menu
-        let gesture = gtk::GestureClick::builder()
-            .button(3)
-            .build();
+        let gesture = gtk::GestureClick::builder().button(3).build();
         let row_weak = row.downgrade();
         gesture.connect_pressed(move |_gesture, _n_press, x, y| {
             if let Some(row) = row_weak.upgrade() {
@@ -307,9 +305,11 @@ impl RillRow {
             TorrentUiState::Downloading => {
                 // Arrow-down icon in blue tinted circle
                 self.icon().set_icon_name(Some("go-down-symbolic"));
-                self.icon().set_css_classes(&["torrent-icon-avatar", "accent"]);
+                self.icon()
+                    .set_css_classes(&["torrent-icon-avatar", "accent"]);
                 // Neutral flat pause button
-                self.action_icon().set_icon_name(Some("media-playback-pause-symbolic"));
+                self.action_icon()
+                    .set_icon_name(Some("media-playback-pause-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Pause"));
                 // Full card at full opacity
@@ -317,10 +317,12 @@ impl RillRow {
             }
             TorrentUiState::Paused => {
                 // Pause icon in gray circle
-                self.icon().set_icon_name(Some("media-playback-pause-symbolic"));
+                self.icon()
+                    .set_icon_name(Some("media-playback-pause-symbolic"));
                 self.icon().set_css_classes(&["torrent-icon-avatar", "dim"]);
                 // Neutral flat resume button
-                self.action_icon().set_icon_name(Some("media-playback-start-symbolic"));
+                self.action_icon()
+                    .set_icon_name(Some("media-playback-start-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Resume"));
                 // Dim entire card
@@ -329,17 +331,21 @@ impl RillRow {
             TorrentUiState::Completed => {
                 // Checkmark in green circle
                 self.icon().set_icon_name(Some("emblem-ok-symbolic"));
-                self.icon().set_css_classes(&["torrent-icon-avatar", "success"]);
+                self.icon()
+                    .set_css_classes(&["torrent-icon-avatar", "success"]);
                 // Trash button (seeding finished)
-                self.action_icon().set_icon_name(Some("user-trash-symbolic"));
+                self.action_icon()
+                    .set_icon_name(Some("user-trash-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
                 self.row_box().set_opacity(1.0);
             }
             TorrentUiState::Error => {
                 self.icon().set_icon_name(Some("dialog-error-symbolic"));
-                self.icon().set_css_classes(&["torrent-icon-avatar", "error"]);
-                self.action_icon().set_icon_name(Some("user-trash-symbolic"));
+                self.icon()
+                    .set_css_classes(&["torrent-icon-avatar", "error"]);
+                self.action_icon()
+                    .set_icon_name(Some("user-trash-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
                 self.action_btn().set_tooltip_text(Some("Remove"));
                 self.row_box().set_opacity(1.0);
@@ -392,7 +398,11 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
     // multi-file torrents, falling back to the download dir for single-file ones.
     let content_dir = imp.latest_update.borrow().as_ref().map(|u| {
         let dir = u.output_dir.join(&u.name);
-        if dir.is_dir() { dir } else { u.output_dir.clone() }
+        if dir.is_dir() {
+            dir
+        } else {
+            u.output_dir.clone()
+        }
     });
 
     let is_selection = if let Some(root) = row.root()
@@ -407,11 +417,26 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
     let actions = gio::SimpleActionGroup::new();
 
     if is_selection {
-        menu.append(Some(gettext("Select _all").as_str()), Some("ctx.select_all"));
-        menu.append(Some(gettext("_Deselect all").as_str()), Some("ctx.deselect_all"));
-        menu.append(Some(gettext("_Start selected").as_str()), Some("ctx.start_selected"));
-        menu.append(Some(gettext("S_top selected").as_str()), Some("ctx.stop_selected"));
-        menu.append(Some(gettext("_Remove selected").as_str()), Some("ctx.remove_selected"));
+        menu.append(
+            Some(gettext("Select _all").as_str()),
+            Some("ctx.select_all"),
+        );
+        menu.append(
+            Some(gettext("_Deselect all").as_str()),
+            Some("ctx.deselect_all"),
+        );
+        menu.append(
+            Some(gettext("_Start selected").as_str()),
+            Some("ctx.start_selected"),
+        );
+        menu.append(
+            Some(gettext("S_top selected").as_str()),
+            Some("ctx.stop_selected"),
+        );
+        menu.append(
+            Some(gettext("_Remove selected").as_str()),
+            Some("ctx.remove_selected"),
+        );
 
         if let Some(old_popover) = imp.active_popover.borrow_mut().take() {
             old_popover.unparent();
@@ -620,15 +645,11 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
                     .upgrade()
                     .and_then(|r| r.root())
                     .and_downcast::<gtk::Window>();
-                launcher.launch(
-                    parent.as_ref(),
-                    gio::Cancellable::NONE,
-                    |res| {
-                        if let Err(e) = res {
-                            log::warn!("Failed to open torrent directory: {}", e);
-                        }
-                    },
-                );
+                launcher.launch(parent.as_ref(), gio::Cancellable::NONE, |res| {
+                    if let Err(e) = res {
+                        log::warn!("Failed to open torrent directory: {}", e);
+                    }
+                });
                 if let Some(p) = p_weak.upgrade() {
                     p.popdown();
                 }

@@ -1,11 +1,11 @@
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::path::Path;
+use std::rc::Rc;
 
 use adw::prelude::*;
 use gettextrs::gettext;
-use gtk::{gio, glib};
 use gtk::subclass::prelude::*;
+use gtk::{gio, glib};
 
 use crate::engine::{TorrentEngine, TorrentUiState, UiUpdate};
 use crate::util::format_size;
@@ -17,7 +17,7 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct RillInfoDialog {
         pub title_lbl: RefCell<Option<gtk::Label>>,
-        
+
         // Overview Tab Widgets
         pub state_lbl: RefCell<Option<gtk::Label>>,
         pub progress_bar: RefCell<Option<gtk::ProgressBar>>,
@@ -84,9 +84,7 @@ mod imp {
                 .hexpand(true)
                 .build();
 
-            let view_switcher = adw::ViewSwitcher::builder()
-                .stack(&view_stack)
-                .build();
+            let view_switcher = adw::ViewSwitcher::builder().stack(&view_stack).build();
 
             let header_bar = adw::HeaderBar::builder()
                 .title_widget(&view_switcher)
@@ -173,28 +171,36 @@ mod imp {
                 .title(gettext("Details"))
                 .build();
 
-            let speed_down_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let speed_down_lbl = gtk::Label::builder()
+                .css_classes(["body", "dim-label"])
+                .build();
             let speed_down_row = adw::ActionRow::builder()
                 .title(gettext("Download Speed"))
                 .build();
             speed_down_row.add_suffix(&speed_down_lbl);
             details_group.add(&speed_down_row);
 
-            let speed_up_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let speed_up_lbl = gtk::Label::builder()
+                .css_classes(["body", "dim-label"])
+                .build();
             let speed_up_row = adw::ActionRow::builder()
                 .title(gettext("Upload Speed"))
                 .build();
             speed_up_row.add_suffix(&speed_up_lbl);
             details_group.add(&speed_up_row);
 
-            let peers_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let peers_lbl = gtk::Label::builder()
+                .css_classes(["body", "dim-label"])
+                .build();
             let peers_row = adw::ActionRow::builder()
                 .title(gettext("Peers Count"))
                 .build();
             peers_row.add_suffix(&peers_lbl);
             details_group.add(&peers_row);
 
-            let eta_lbl = gtk::Label::builder().css_classes(["body", "dim-label"]).build();
+            let eta_lbl = gtk::Label::builder()
+                .css_classes(["body", "dim-label"])
+                .build();
             let eta_row = adw::ActionRow::builder()
                 .title(gettext("Estimated Time (ETA)"))
                 .build();
@@ -249,10 +255,18 @@ mod imp {
                     if *obj.imp().updating_ui.borrow() {
                         return;
                     }
-                    obj.imp().last_sequential_toggle.replace(Some(std::time::Instant::now()));
+                    obj.imp()
+                        .last_sequential_toggle
+                        .replace(Some(std::time::Instant::now()));
                     let is_active = sw.is_active();
-                    let info_hash_opt = obj.imp().shared_update.borrow().as_ref()
-                        .and_then(|shared| shared.borrow().as_ref().map(|upd| upd.info_hash.clone()));
+                    let info_hash_opt =
+                        obj.imp()
+                            .shared_update
+                            .borrow()
+                            .as_ref()
+                            .and_then(|shared| {
+                                shared.borrow().as_ref().map(|upd| upd.info_hash.clone())
+                            });
                     if let Some(info_hash) = info_hash_opt {
                         if let Some(engine) = obj.imp().engine.borrow().as_ref() {
                             engine.borrow().set_sequential(&info_hash, is_active);
@@ -313,7 +327,9 @@ mod imp {
 
             let factory = gtk::SignalListItemFactory::new();
             factory.connect_setup(|_, item| {
-                let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
                 let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
                 row.set_margin_top(8);
                 row.set_margin_bottom(8);
@@ -338,12 +354,24 @@ mod imp {
                 item.set_child(Some(&row));
             });
             factory.connect_bind(|_, item| {
-                let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
-                let Some(obj) = item.item().and_downcast::<crate::model::FileObject>() else { return };
-                let Some(row) = item.child().and_downcast::<gtk::Box>() else { return };
-                let Some(check) = row.first_child() else { return };
-                let Some(title) = check.next_sibling().and_downcast::<gtk::Label>() else { return };
-                let Some(size) = title.next_sibling().and_downcast::<gtk::Label>() else { return };
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
+                let Some(obj) = item.item().and_downcast::<crate::model::FileObject>() else {
+                    return;
+                };
+                let Some(row) = item.child().and_downcast::<gtk::Box>() else {
+                    return;
+                };
+                let Some(check) = row.first_child() else {
+                    return;
+                };
+                let Some(title) = check.next_sibling().and_downcast::<gtk::Label>() else {
+                    return;
+                };
+                let Some(size) = title.next_sibling().and_downcast::<gtk::Label>() else {
+                    return;
+                };
                 title.set_text(&obj.path());
                 size.set_text(&format_size(obj.size()));
             });
@@ -390,7 +418,7 @@ mod imp {
                 .css_classes(["boxed-list"])
                 .selection_mode(gtk::SelectionMode::None)
                 .build();
-            
+
             // Empty placeholder for peers
             let peers_empty = gtk::Label::builder()
                 .label(gettext("No active peers connected."))
@@ -559,9 +587,7 @@ impl RillInfoDialog {
     }
 
     pub fn new(shared_update: Rc<RefCell<Option<UiUpdate>>>, name: &str) -> Self {
-        let obj: Self = glib::Object::builder()
-            .property("title", name)
-            .build();
+        let obj: Self = glib::Object::builder().property("title", name).build();
 
         obj.title_lbl().set_text(name);
         *obj.imp().shared_update.borrow_mut() = Some(shared_update.clone());
@@ -617,7 +643,9 @@ impl RillInfoDialog {
         };
 
         let state_text = match update.state {
-            TorrentUiState::Downloading => format!("{} ({:.1}%)", gettext("Downloading"), progress * 100.0),
+            TorrentUiState::Downloading => {
+                format!("{} ({:.1}%)", gettext("Downloading"), progress * 100.0)
+            }
             TorrentUiState::Paused => format!("{} ({:.1}%)", gettext("Paused"), progress * 100.0),
             TorrentUiState::Completed => gettext("Completed"),
             TorrentUiState::Error => gettext("Error"),
@@ -646,7 +674,7 @@ impl RillInfoDialog {
         self.speed_up_lbl()
             .set_text(&format!("↑ {}", format_size(update.speed_up)));
         self.peers_lbl().set_text(&update.peers.to_string());
-        
+
         // Format ETA
         let eta_text = if update.state == TorrentUiState::Downloading && update.speed_down > 0 {
             format_eta(update.downloaded, update.total, update.speed_down)
@@ -673,9 +701,10 @@ impl RillInfoDialog {
             let output_dir = update.output_dir.clone();
             let weak = self.downgrade();
             glib::spawn_future_local(async move {
-                let files = tokio::task::spawn_blocking(move || load_torrent_files(&uri, &output_dir))
-                    .await
-                    .unwrap_or_default();
+                let files =
+                    tokio::task::spawn_blocking(move || load_torrent_files(&uri, &output_dir))
+                        .await
+                        .unwrap_or_default();
                 if let Some(obj) = weak.upgrade() {
                     if !files.is_empty() {
                         obj.populate_files_tab(&files);
@@ -693,9 +722,10 @@ impl RillInfoDialog {
             let output_dir = update.output_dir.clone();
             let weak = self.downgrade();
             glib::spawn_future_local(async move {
-                let trackers = tokio::task::spawn_blocking(move || load_trackers(&uri, &output_dir))
-                    .await
-                    .unwrap_or_default();
+                let trackers =
+                    tokio::task::spawn_blocking(move || load_trackers(&uri, &output_dir))
+                        .await
+                        .unwrap_or_default();
                 if let Some(obj) = weak.upgrade() {
                     if !trackers.is_empty() {
                         obj.populate_trackers_tab(&trackers);
@@ -709,7 +739,7 @@ impl RillInfoDialog {
 
     fn update_peers_tab(&self, peers: &[crate::engine::PeerInfo]) {
         let list_box = self.peers_list_box();
-        
+
         // Clear current peers
         while let Some(row) = list_box.row_at_index(0) {
             list_box.remove(&row);
@@ -790,14 +820,15 @@ impl RillInfoDialog {
             list_box.append(&row);
         }
     }
-
 }
 
 fn load_torrent_files(uri: &str, output_dir: &Path) -> Vec<TorrentFileInfo> {
     // 1. If uri is a file path, load directly
     let path = Path::new(uri);
-    if path.exists() && path.is_file()
-        && let Ok(meta) = mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(path)
+    if path.exists()
+        && path.is_file()
+        && let Ok(meta) =
+            mtorrent::utils::re_exports::mtorrent_core::input::Metainfo::from_file(path)
     {
         return extract_files_from_meta(&meta);
     }
@@ -836,7 +867,9 @@ fn find_metainfo_for_uri(
     None
 }
 
-fn extract_files_from_meta(meta: &mtorrent::utils::re_exports::mtorrent_core::input::Metainfo) -> Vec<TorrentFileInfo> {
+fn extract_files_from_meta(
+    meta: &mtorrent::utils::re_exports::mtorrent_core::input::Metainfo,
+) -> Vec<TorrentFileInfo> {
     let mut files = Vec::new();
     if let Some(meta_files) = meta.files() {
         for (len, path) in meta_files {
@@ -858,7 +891,7 @@ fn extract_files_from_meta(meta: &mtorrent::utils::re_exports::mtorrent_core::in
 
 fn load_trackers(uri: &str, output_dir: &Path) -> Vec<String> {
     let mut list = Vec::new();
-    
+
     // Attempt to load trackers from the matching torrent file. For a magnet,
     // match by info hash (see find_metainfo_for_uri) so trackers belong to this
     // torrent and not the first .torrent in the folder.
@@ -921,4 +954,3 @@ fn format_eta(downloaded: u64, total: u64, speed_down: u64) -> String {
         format!("{}d {}h", eta_secs / 86400, (eta_secs % 86400) / 3600)
     }
 }
-

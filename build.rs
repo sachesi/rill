@@ -56,10 +56,18 @@ fn compile_translations(out_path: &Path) {
         }
         let mo = dest_dir.join(format!("{TEXTDOMAIN}.mo"));
 
-        match Command::new("msgfmt").arg(&path).arg("-o").arg(&mo).status() {
+        match Command::new("msgfmt")
+            .arg(&path)
+            .arg("-o")
+            .arg(&mo)
+            .status()
+        {
             Ok(status) if status.success() => {}
             Ok(status) => {
-                println!("cargo:warning=msgfmt failed for {} ({status})", path.display());
+                println!(
+                    "cargo:warning=msgfmt failed for {} ({status})",
+                    path.display()
+                );
             }
             Err(e) => {
                 println!("cargo:warning=msgfmt not found, translations disabled in dev: {e}");
@@ -68,5 +76,8 @@ fn compile_translations(out_path: &Path) {
         }
     }
 
-    println!("cargo:rustc-env=RILL_LOCALEDIR_BUILD={}", locale_dir.display());
+    println!(
+        "cargo:rustc-env=RILL_LOCALEDIR_BUILD={}",
+        locale_dir.display()
+    );
 }

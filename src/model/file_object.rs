@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 
-use gtk::glib;
 use glib::subclass::prelude::*;
+use gtk::glib;
 
 mod imp {
     use super::*;

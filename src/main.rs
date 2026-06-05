@@ -14,8 +14,8 @@ use gtk::prelude::*;
 use mtorrent as mt;
 use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 
-use crate::engine::TorrentEngine;
 use crate::application::RillApplication;
+use crate::engine::TorrentEngine;
 use crate::storage::Storage;
 
 fn main() {
@@ -51,8 +51,7 @@ fn main() {
 
     // Make the bundled app icon resolvable by name (works uninstalled too).
     if let Some(display) = gtk::gdk::Display::default() {
-        gtk::IconTheme::for_display(&display)
-            .add_resource_path("/com/github/sachesi/rill/icons");
+        gtk::IconTheme::for_display(&display).add_resource_path("/com/github/sachesi/rill/icons");
     }
     gtk::Window::set_default_icon_name("com.github.sachesi.rill");
 
@@ -122,14 +121,16 @@ fn main() {
     let (storage_tx, storage_rx) = tokio::sync::oneshot::channel();
 
     std::thread::spawn(move || {
-        let rt = pwp_builder.build_local(Default::default())
+        let rt = pwp_builder
+            .build_local(Default::default())
             .expect("Failed to create PWP runtime");
         let handle = rt.handle().clone();
         pwp_tx.send(handle).ok();
         rt.block_on(std::future::pending::<()>());
     });
     std::thread::spawn(move || {
-        let rt = storage_builder.build_local(Default::default())
+        let rt = storage_builder
+            .build_local(Default::default())
             .expect("Failed to create storage runtime");
         let handle = rt.handle().clone();
         storage_tx.send(handle).ok();
@@ -141,7 +142,7 @@ fn main() {
 
     let (_dht_worker, dht_cmds) = mt::app::dht::launch_dht_node_runtime(mt::app::dht::Config {
         local_port: 6881,
-            max_concurrent_queries: Some(10),
+        max_concurrent_queries: Some(10),
         config_dir: local_data_dir.clone(),
         use_upnp: false,
         bootstrap_nodes_override: None,
@@ -166,7 +167,10 @@ fn main() {
         log::warn!("Failed to load torrents: {}", e);
         Vec::new()
     });
-    log::info!("Loaded {} saved torrents from database", saved_torrents.len());
+    log::info!(
+        "Loaded {} saved torrents from database",
+        saved_torrents.len()
+    );
 
     let rill = RillApplication::new(app, engine, storage, saved_torrents);
     std::process::exit(rill.run().into());
@@ -179,7 +183,9 @@ fn main() {
 /// shows translations without installing), and finally the system locale
 /// directory used by an installed package.
 fn init_locale() {
-    use gettextrs::{LocaleCategory, bind_textdomain_codeset, bindtextdomain, setlocale, textdomain};
+    use gettextrs::{
+        LocaleCategory, bind_textdomain_codeset, bindtextdomain, setlocale, textdomain,
+    };
 
     setlocale(LocaleCategory::LcAll, "");
 

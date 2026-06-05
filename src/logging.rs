@@ -22,4 +22,3 @@ pub fn level_from_str(s: &str) -> Option<LevelFilter> {
         _ => None,
     }
 }
-

@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 
 use adw::prelude::*;
@@ -7,16 +8,17 @@ use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
 
-
 use async_channel::Sender;
 
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
 use crate::model::TorrentModel;
 use crate::storage::{SavedTorrent, Storage};
 
-use super::torrent_row::RillRow;
-use super::{RillAddDialog, AddMode};
 use super::RillInfoDialog;
+use super::torrent_row::RillRow;
+use super::{AddMode, RillAddDialog};
+
+type PersistedSnapshot = (String, u64, u64, u64, u64);
 
 const APP_CSS: &str = "
 progressbar.thin > trough,
@@ -75,7 +77,7 @@ mod imp {
         pub rows: RefCell<HashMap<String, RillRow>>,
         /// Last state persisted per torrent, to skip redundant DB writes on the
         /// UI thread. Tuple: (state, downloaded, total, total_pieces, downloaded_pieces).
-        pub last_persisted: RefCell<HashMap<String, (String, u64, u64, u64, u64)>>,
+        pub last_persisted: RefCell<HashMap<String, PersistedSnapshot>>,
         pub info_dialogs: RefCell<HashMap<String, Rc<RillInfoDialog>>>,
         pub deleted_torrents: RefCell<std::collections::HashSet<String>>,
         pub selection_mode: RefCell<bool>,
@@ -239,8 +241,7 @@ mod imp {
                 .hexpand(true)
                 .build();
 
-            let search_bar = gtk::SearchBar::builder()
-                .build();
+            let search_bar = gtk::SearchBar::builder().build();
             search_bar.set_child(Some(&search_entry));
             search_bar.set_key_capture_widget(Some(&*obj));
 
@@ -257,17 +258,23 @@ mod imp {
 
             let obj_weak = obj.downgrade();
             search_bar.connect_search_mode_enabled_notify(move |sb| {
-                if let Some(window) = obj_weak.upgrade() {
-                    if !sb.property::<bool>("search-mode-enabled") {
-                        window.search_entry().set_text("");
-                        window.clear_search_filter();
-                    }
+                if let Some(window) = obj_weak.upgrade()
+                    && !sb.property::<bool>("search-mode-enabled")
+                {
+                    window.search_entry().set_text("");
+                    window.clear_search_filter();
                 }
             });
 
             let add_menu = gio::Menu::new();
-            add_menu.append(Some(gettext("_Add Torrent File…").as_str()), Some("win.add-file"));
-            add_menu.append(Some(gettext("_Add Magnet Link…").as_str()), Some("win.add-magnet"));
+            add_menu.append(
+                Some(gettext("_Add Torrent File…").as_str()),
+                Some("win.add-file"),
+            );
+            add_menu.append(
+                Some(gettext("_Add Magnet Link…").as_str()),
+                Some("win.add-magnet"),
+            );
 
             let add_btn = gtk::MenuButton::builder()
                 .icon_name("list-add-symbolic")
@@ -278,7 +285,10 @@ mod imp {
             // Menu
             let menu = gio::Menu::new();
             let prefs_section = gio::Menu::new();
-            prefs_section.append(Some(gettext("_Preferences").as_str()), Some("app.preferences"));
+            prefs_section.append(
+                Some(gettext("_Preferences").as_str()),
+                Some("app.preferences"),
+            );
             menu.append_section(None, &prefs_section);
             let about_section = gio::Menu::new();
             about_section.append(Some(gettext("_About Rill").as_str()), Some("app.about"));
@@ -292,8 +302,7 @@ mod imp {
                 .tooltip_text(gettext("Main Menu"))
                 .build();
 
-            let header_bar = adw::HeaderBar::builder()
-                .build();
+            let header_bar = adw::HeaderBar::builder().build();
             header_bar.set_title_widget(Some(&window_title));
             header_bar.pack_start(&cancel_btn);
             header_bar.pack_start(&add_btn);
@@ -410,9 +419,7 @@ impl RillWindow {
             );
         }
 
-        let window: Self = glib::Object::builder()
-            .property("application", app)
-            .build();
+        let window: Self = glib::Object::builder().property("application", app).build();
 
         let settings = storage.load_settings();
         window.imp().engine.replace(Some(engine));
@@ -458,20 +465,20 @@ impl RillWindow {
                 return glib::Propagation::Proceed;
             }
 
-            if let Some(ref name) = keyval.name() {
-                if &**name == "Escape" {
-                    let mut handled = false;
-                    if window.is_selection_mode() {
-                        window.exit_selection_mode();
-                        handled = true;
-                    }
-                    if window.search_bar().is_search_mode() {
-                        window.search_bar().set_search_mode(false);
-                        handled = true;
-                    }
-                    if handled {
-                        return glib::Propagation::Stop;
-                    }
+            if let Some(ref name) = keyval.name()
+                && &**name == "Escape"
+            {
+                let mut handled = false;
+                if window.is_selection_mode() {
+                    window.exit_selection_mode();
+                    handled = true;
+                }
+                if window.search_bar().is_search_mode() {
+                    window.search_bar().set_search_mode(false);
+                    handled = true;
+                }
+                if handled {
+                    return glib::Propagation::Stop;
                 }
             }
 
@@ -591,7 +598,12 @@ impl RillWindow {
             .transient_for(self)
             .modal(true)
             .heading(gettext("Delete Torrent?"))
-            .body(gettext("Are you sure you want to delete \"{name}\"? This action cannot be undone.").replace("{name}", &torrent_name))
+            .body(
+                gettext(
+                    "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+                )
+                .replace("{name}", &torrent_name),
+            )
             .extra_child(&delete_files_check)
             .build();
 
@@ -604,7 +616,9 @@ impl RillWindow {
         let window_weak = self.downgrade();
         let hash_str = info_hash.to_string();
         dialog.connect_response(None, move |dialog, response| {
-            if response == "delete" && let Some(window) = window_weak.upgrade() {
+            if response == "delete"
+                && let Some(window) = window_weak.upgrade()
+            {
                 let delete_files = delete_files_check.is_active();
                 window.delete_torrent_confirmed(&hash_str, delete_files);
             }
@@ -615,7 +629,10 @@ impl RillWindow {
     }
 
     fn delete_torrent_confirmed(&self, info_hash: &str, delete_files: bool) {
-        self.imp().deleted_torrents.borrow_mut().insert(info_hash.to_string());
+        self.imp()
+            .deleted_torrents
+            .borrow_mut()
+            .insert(info_hash.to_string());
 
         if let Some(engine) = self.imp().engine.borrow().as_ref() {
             engine.borrow().stop(info_hash);
@@ -653,41 +670,42 @@ impl RillWindow {
                         s.load_torrent(&hash_q)
                             .ok()
                             .flatten()
-                            .map(|t| (t.output_dir_path(), t.name.clone()))
+                            .map(|t| (t.output_dir_path(), t.uri.clone()))
                     })
                     .await
                     .ok()
                     .flatten();
-                if let Some((dir, name)) = found {
-                    let safe_name = name.replace("/", "_").replace("\\", "_").replace("..", "_");
-                    let torrent_path = dir.join(&safe_name);
-                    let path_for_log = torrent_path.clone();
-                    let res = tokio::task::spawn_blocking(move || {
-                        if !torrent_path.exists() {
-                            return Ok(());
-                        }
-                        if torrent_path.is_dir() {
-                            std::fs::remove_dir_all(&torrent_path)
-                        } else {
-                            std::fs::remove_file(&torrent_path)
-                        }
-                    })
-                    .await;
-                    match res {
-                        Ok(Ok(())) => {
-                            log::info!("Deleted torrent data path: {}", path_for_log.display())
-                        }
-                        Ok(Err(e)) => {
-                            log::warn!(
-                                "Failed to delete torrent data {}: {}",
-                                path_for_log.display(),
-                                e
-                            );
-                            if let Some(window) = window_weak.upgrade() {
-                                window.show_toast(&format!("Failed to delete data: {}", e));
+                if let Some((dir, uri)) = found {
+                    if let Some(torrent_path) = torrent_data_path(&uri, &dir) {
+                        let path_for_log = torrent_path.clone();
+                        let res = tokio::task::spawn_blocking(move || {
+                            remove_torrent_data_path(&torrent_path)
+                        })
+                        .await;
+                        match res {
+                            Ok(Ok(())) => {
+                                log::info!("Deleted torrent data path: {}", path_for_log.display())
                             }
+                            Ok(Err(e)) => {
+                                log::warn!(
+                                    "Failed to delete torrent data {}: {}",
+                                    path_for_log.display(),
+                                    e
+                                );
+                                if let Some(window) = window_weak.upgrade() {
+                                    window.show_toast(&format!("Failed to delete data: {}", e));
+                                }
+                            }
+                            Err(e) => log::warn!("Delete task failed: {}", e),
                         }
-                        Err(e) => log::warn!("Delete task failed: {}", e),
+                    } else {
+                        log::warn!(
+                            "Refusing to delete torrent data for unresolved path: {}",
+                            uri
+                        );
+                        if let Some(window) = window_weak.upgrade() {
+                            window.show_toast(&gettext("Could not resolve torrent data path"));
+                        }
                     }
                 }
             }
@@ -738,8 +756,6 @@ impl RillWindow {
     }
 
     fn setup_dnd(&self) {
-        use std::path::PathBuf;
-
         let drop_target = gtk::DropTarget::new(glib::Type::STRING, gtk::gdk::DragAction::COPY);
         let window = self.downgrade();
 
@@ -829,7 +845,11 @@ impl RillWindow {
                                 if err == "user_requested_removal" {
                                     window.delete_torrent(&info_hash);
                                 } else {
-                                    log::error!("Torrent {} finished with error: {}", info_hash, err);
+                                    log::error!(
+                                        "Torrent {} finished with error: {}",
+                                        info_hash,
+                                        err
+                                    );
                                     window.show_toast(&format!("Error: {}", err));
                                 }
                             }
@@ -874,7 +894,12 @@ impl RillWindow {
     }
 
     fn process_update(&self, update: &UiUpdate) {
-        if self.imp().deleted_torrents.borrow().contains(&update.info_hash) {
+        if self
+            .imp()
+            .deleted_torrents
+            .borrow()
+            .contains(&update.info_hash)
+        {
             log::debug!("Ignoring update for deleted torrent: {}", update.info_hash);
             return;
         }
@@ -959,7 +984,8 @@ impl RillWindow {
             let engine = self.imp().engine.borrow();
             let tx = self.imp().tx.borrow();
             if let (Some(engine), Some(tx)) = (engine.as_ref(), tx.as_ref()) {
-                let new_row = RillRow::new(final_update.info_hash.clone(), engine.clone(), tx.clone());
+                let new_row =
+                    RillRow::new(final_update.info_hash.clone(), engine.clone(), tx.clone());
                 new_row.update(&final_update);
                 rows.insert(final_update.info_hash.clone(), new_row.clone());
 
@@ -984,7 +1010,8 @@ impl RillWindow {
         self.done_header().set_visible(done_has);
         self.done_list().set_visible(done_has);
 
-        self.empty_page().set_visible(!(dl_has || pause_has || done_has));
+        self.empty_page()
+            .set_visible(!(dl_has || pause_has || done_has));
     }
 
     pub fn present(&self) {
@@ -1095,7 +1122,13 @@ impl RillWindow {
     }
 
     pub fn start_selected_torrents(&self) {
-        let hashes: Vec<String> = self.imp().selected_hashes.borrow().iter().cloned().collect();
+        let hashes: Vec<String> = self
+            .imp()
+            .selected_hashes
+            .borrow()
+            .iter()
+            .cloned()
+            .collect();
         let engine = self.imp().engine.borrow().clone();
         if let Some(engine) = engine {
             let rows = self.imp().rows.borrow();
@@ -1121,7 +1154,13 @@ impl RillWindow {
     }
 
     pub fn stop_selected_torrents(&self) {
-        let hashes: Vec<String> = self.imp().selected_hashes.borrow().iter().cloned().collect();
+        let hashes: Vec<String> = self
+            .imp()
+            .selected_hashes
+            .borrow()
+            .iter()
+            .cloned()
+            .collect();
         let engine = self.imp().engine.borrow().clone();
         if let Some(engine) = engine {
             let rows = self.imp().rows.borrow();
@@ -1149,7 +1188,13 @@ impl RillWindow {
     }
 
     pub fn remove_selected_torrents(&self) {
-        let hashes: Vec<String> = self.imp().selected_hashes.borrow().iter().cloned().collect();
+        let hashes: Vec<String> = self
+            .imp()
+            .selected_hashes
+            .borrow()
+            .iter()
+            .cloned()
+            .collect();
         if hashes.is_empty() {
             return;
         }
@@ -1176,7 +1221,9 @@ impl RillWindow {
 
         let window_weak = self.downgrade();
         dialog.connect_response(None, move |dialog, response| {
-            if response == "delete" && let Some(window) = window_weak.upgrade() {
+            if response == "delete"
+                && let Some(window) = window_weak.upgrade()
+            {
                 let delete_files = delete_files_check.is_active();
                 for hash in &hashes {
                     window.delete_torrent_confirmed(hash, delete_files);
@@ -1192,7 +1239,7 @@ impl RillWindow {
     pub fn open_info_dialog(&self, rill_row: &RillRow) {
         let info_hash = rill_row.info_hash();
         let mut dialogs = self.imp().info_dialogs.borrow_mut();
-        
+
         let mut needs_create = true;
         if let Some(dialog) = dialogs.get(&info_hash) {
             if dialog.is_visible() {
@@ -1208,10 +1255,7 @@ impl RillWindow {
             let target_width = (w_width / 2).max(360);
             let target_height = (w_height / 2).max(400);
 
-            let dialog = RillInfoDialog::new(
-                rill_row.latest_update(),
-                &rill_row.name(),
-            );
+            let dialog = RillInfoDialog::new(rill_row.latest_update(), &rill_row.name());
             if let Some(engine) = self.imp().engine.borrow().as_ref() {
                 dialog.set_engine(engine.clone());
             }
@@ -1256,20 +1300,32 @@ impl RillWindow {
         if let (Some(engine), Some(tx), Some(storage)) =
             (engine.as_ref(), tx.as_ref(), storage.as_ref())
         {
-            let dialog = RillAddDialog::new(engine.clone(), tx.clone(), storage.clone(), self, AddMode::Magnet);
+            let dialog = RillAddDialog::new(
+                engine.clone(),
+                tx.clone(),
+                storage.clone(),
+                self,
+                AddMode::Magnet,
+            );
             dialog.set_uri(uri);
             dialog.present();
         }
     }
 
-    pub fn show_add_dialog_with_file(&self, path: &std::path::Path) {
+    pub fn show_add_dialog_with_file(&self, path: &Path) {
         let engine = self.imp().engine.borrow();
         let tx = self.imp().tx.borrow();
         let storage = self.imp().storage.borrow();
         if let (Some(engine), Some(tx), Some(storage)) =
             (engine.as_ref(), tx.as_ref(), storage.as_ref())
         {
-            let dialog = RillAddDialog::new(engine.clone(), tx.clone(), storage.clone(), self, AddMode::File);
+            let dialog = RillAddDialog::new(
+                engine.clone(),
+                tx.clone(),
+                storage.clone(),
+                self,
+                AddMode::File,
+            );
             dialog.set_selected_file(path);
             dialog.present();
         }
@@ -1358,27 +1414,50 @@ impl RillWindow {
             }
 
             // Offload the write to the storage worker so the per-second snapshot
-            // does not touch SQLite on the GTK main thread. Update the coalescing
-            // cache optimistically; a failed write is logged on the worker.
+            // does not touch SQLite on the GTK main thread. Keep the coalescing
+            // cache optimistic, but clear this exact entry if the worker rejects it
+            // so the next identical snapshot retries.
             let info_hash = update.info_hash.clone();
             let state_owned = state_str.to_string();
             let downloaded = update.downloaded;
             let total = update.total;
             let total_pieces = update.total_pieces as u64;
             let downloaded_pieces = update.downloaded_pieces as u64;
-            storage.execute(move |s| {
-                if let Err(e) = s.update_torrent_state(
-                    &info_hash,
-                    &state_owned,
-                    downloaded,
-                    total,
-                    total_pieces,
-                    downloaded_pieces,
-                ) {
+            self.imp()
+                .last_persisted
+                .borrow_mut()
+                .insert(update.info_hash.clone(), snapshot.clone());
+            let storage = storage.clone();
+            let window = self.downgrade();
+            glib::spawn_future_local(async move {
+                let info_hash_for_write = info_hash.clone();
+                let result = storage
+                    .query(move |s| {
+                        s.update_torrent_state(
+                            &info_hash_for_write,
+                            &state_owned,
+                            downloaded,
+                            total,
+                            total_pieces,
+                            downloaded_pieces,
+                        )
+                    })
+                    .await;
+                let err = match result {
+                    Ok(Ok(())) => None,
+                    Ok(Err(e)) => Some(e),
+                    Err(e) => Some(e),
+                };
+                if let Some(e) = err {
                     log::warn!("Failed to save torrent state: {}", e);
+                    if let Some(window) = window.upgrade() {
+                        let mut last_persisted = window.imp().last_persisted.borrow_mut();
+                        if last_persisted.get(&info_hash) == Some(&snapshot) {
+                            last_persisted.remove(&info_hash);
+                        }
+                    }
                 }
             });
-            self.imp().last_persisted.borrow_mut().insert(update.info_hash.clone(), snapshot);
         }
     }
 
@@ -1416,8 +1495,14 @@ impl RillWindow {
         let rows = self.imp().rows.borrow();
         let mut active_downloads = 0;
         let mut queued_torrents: Vec<(String, i64)> = Vec::new();
-        let added_at_map: HashMap<String, i64> = saved.iter().map(|t| (t.info_hash.clone(), t.added_at)).collect();
-        let state_map: HashMap<String, String> = saved.iter().map(|t| (t.info_hash.clone(), t.state.clone())).collect();
+        let added_at_map: HashMap<String, i64> = saved
+            .iter()
+            .map(|t| (t.info_hash.clone(), t.added_at))
+            .collect();
+        let state_map: HashMap<String, String> = saved
+            .iter()
+            .map(|t| (t.info_hash.clone(), t.state.clone()))
+            .collect();
 
         let engine_ref = self.imp().engine.borrow();
         let engine = match engine_ref.as_ref() {
@@ -1442,9 +1527,11 @@ impl RillWindow {
         queued_torrents.sort_by_key(|&(_, added_at)| added_at);
 
         if active_downloads > max_dl {
-            let mut downloading_with_time: Vec<(String, i64)> = rows.keys()
+            let mut downloading_with_time: Vec<(String, i64)> = rows
+                .keys()
                 .filter(|hash| {
-                    state_map.get(*hash).map(|s| s.as_str()) != Some("completed") && engine.borrow().is_active(hash)
+                    state_map.get(*hash).map(|s| s.as_str()) != Some("completed")
+                        && engine.borrow().is_active(hash)
                 })
                 .map(|hash| {
                     let t = added_at_map.get(hash).cloned().unwrap_or(0);
@@ -1454,7 +1541,12 @@ impl RillWindow {
             downloading_with_time.sort_by_key(|&(_, added_at)| -added_at);
 
             let excess = active_downloads - max_dl;
-            log::info!("Active downloads limit exceeded ({} > {}). Auto-pausing {} torrent(s).", active_downloads, max_dl, excess);
+            log::info!(
+                "Active downloads limit exceeded ({} > {}). Auto-pausing {} torrent(s).",
+                active_downloads,
+                max_dl,
+                excess
+            );
             for (info_hash, _) in downloading_with_time.iter().take(excess) {
                 log::info!("Auto-pausing torrent: {}", info_hash);
                 engine.borrow().toggle(info_hash);
@@ -1462,7 +1554,12 @@ impl RillWindow {
         } else if active_downloads < max_dl && !queued_torrents.is_empty() {
             let capacity = max_dl - active_downloads;
             let to_resume = capacity.min(queued_torrents.len());
-            log::info!("Below active downloads limit ({} < {}). Auto-resuming {} torrent(s).", active_downloads, max_dl, to_resume);
+            log::info!(
+                "Below active downloads limit ({} < {}). Auto-resuming {} torrent(s).",
+                active_downloads,
+                max_dl,
+                to_resume
+            );
             for (info_hash, _) in queued_torrents.iter().take(to_resume) {
                 log::info!("Auto-resuming torrent: {}", info_hash);
                 engine.borrow().toggle(info_hash);
@@ -1487,4 +1584,81 @@ fn show_add_dialog(
 ) {
     let dialog = RillAddDialog::new(engine, tx, storage, window, AddMode::Magnet);
     dialog.present();
+}
+
+fn torrent_data_path(uri: &str, output_dir: &Path) -> Option<PathBuf> {
+    use mtorrent::utils::re_exports::mtorrent_core::input::MagnetLink;
+    use std::str::FromStr;
+
+    let sanitized_uri = crate::engine::sanitize_magnet_dn(uri);
+    if let Ok(magnet) = MagnetLink::from_str(&sanitized_uri) {
+        return contained_torrent_path(output_dir, magnet.name().unwrap_or("unnamed"));
+    }
+
+    Path::new(uri)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| contained_torrent_path(output_dir, stem))
+}
+
+fn contained_torrent_path(output_dir: &Path, name: &str) -> Option<PathBuf> {
+    if name.is_empty() || name.contains('\\') || name.contains('\0') {
+        return None;
+    }
+    let mut components = Path::new(name).components();
+    let component = match (components.next(), components.next()) {
+        (Some(Component::Normal(component)), None) => component,
+        _ => return None,
+    };
+    Some(output_dir.join(component))
+}
+
+fn remove_torrent_data_path(path: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => std::fs::remove_dir_all(path),
+        Ok(_) => std::fs::remove_file(path),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contained_torrent_path_rejects_path_like_names() {
+        let output_dir = Path::new("/tmp/rill-downloads");
+
+        assert_eq!(contained_torrent_path(output_dir, ""), None);
+        assert_eq!(contained_torrent_path(output_dir, "."), None);
+        assert_eq!(contained_torrent_path(output_dir, ".."), None);
+        assert_eq!(contained_torrent_path(output_dir, "show/season"), None);
+        assert_eq!(contained_torrent_path(output_dir, "show\\season"), None);
+        assert_eq!(
+            contained_torrent_path(output_dir, "show"),
+            Some(output_dir.join("show"))
+        );
+    }
+
+    #[test]
+    fn torrent_data_path_uses_engine_magnet_sanitizer() {
+        let output_dir = Path::new("/tmp/rill-downloads");
+        let uri = "magnet:?xt=urn:btih:0123456789012345678901234567890123456789&dn=Show%20%2F%20Season%201";
+
+        assert_eq!(
+            torrent_data_path(uri, output_dir),
+            Some(output_dir.join("Show _ Season 1"))
+        );
+    }
+
+    #[test]
+    fn torrent_data_path_uses_torrent_file_stem() {
+        let output_dir = Path::new("/tmp/rill-downloads");
+
+        assert_eq!(
+            torrent_data_path("/tmp/source/Foo.torrent", output_dir),
+            Some(output_dir.join("Foo"))
+        );
+    }
 }

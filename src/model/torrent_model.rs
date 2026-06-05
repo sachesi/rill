@@ -1,11 +1,10 @@
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::{gio, prelude::*};
 
-
-use super::{TorrentObject};
+use super::TorrentObject;
 use super::torrent_object::TorrentState;
 use crate::engine::UiUpdate;
 
@@ -46,9 +45,11 @@ impl TorrentModel {
                 .unwrap_or(false)
         });
 
-        let downloading = gtk::FilterListModel::new(Some(all_torrents.clone()), Some(downloading_filter));
+        let downloading =
+            gtk::FilterListModel::new(Some(all_torrents.clone()), Some(downloading_filter));
         let paused = gtk::FilterListModel::new(Some(all_torrents.clone()), Some(paused_filter));
-        let completed = gtk::FilterListModel::new(Some(all_torrents.clone()), Some(completed_filter));
+        let completed =
+            gtk::FilterListModel::new(Some(all_torrents.clone()), Some(completed_filter));
 
         Self {
             all_torrents,
@@ -91,7 +92,7 @@ impl TorrentModel {
     /// Add or update a torrent from a UI update
     pub fn update_torrent(&self, update: UiUpdate) {
         let mut lookup = self.lookup.borrow_mut();
-        
+
         if let Some(existing) = lookup.get(&update.info_hash) {
             // Update existing torrent
             existing.set_name(&update.name);
@@ -103,7 +104,7 @@ impl TorrentModel {
             existing.set_speed_up(update.speed_up);
             existing.set_output_dir(&update.output_dir.to_string_lossy());
             existing.set_uri(&update.uri);
-            
+
             // Notify filters to re-evaluate every item. items_changed(0, 0, 0) is a
             // no-op to GTK, so a state change (e.g. Downloading → Completed) would
             // not move the row between filtered sections until the next real
@@ -124,7 +125,7 @@ impl TorrentModel {
                 update.output_dir,
                 &update.uri,
             );
-            
+
             lookup.insert(update.info_hash.clone(), torrent.clone());
             self.all_torrents.append(&torrent);
         }
@@ -133,7 +134,7 @@ impl TorrentModel {
     /// Remove a torrent by info_hash
     pub fn remove_torrent(&self, info_hash: &str) -> bool {
         let mut lookup = self.lookup.borrow_mut();
-        
+
         if let Some(_torrent) = lookup.remove(info_hash) {
             // Find and remove from the main store
             for i in 0..self.all_torrents.n_items() {
@@ -146,7 +147,7 @@ impl TorrentModel {
                 }
             }
         }
-        
+
         false
     }
 

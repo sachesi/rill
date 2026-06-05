@@ -1,15 +1,15 @@
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use adw::prelude::*;
 use gettextrs::gettext;
-use gtk::{gio, glib};
 use gtk::subclass::prelude::*;
+use gtk::{gio, glib};
 
-use async_channel::Sender;
 use crate::engine::{TorrentEngine, UiEvent};
 use crate::storage::Storage;
+use async_channel::Sender;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddMode {
@@ -53,9 +53,7 @@ mod imp {
             let obj = self.obj();
 
             // Cancel button
-            let cancel_btn = gtk::Button::builder()
-                .label(gettext("Cancel"))
-                .build();
+            let cancel_btn = gtk::Button::builder().label(gettext("Cancel")).build();
 
             // Add button
             let add_btn = gtk::Button::builder()
@@ -81,9 +79,7 @@ mod imp {
             url_group.add(&url_entry);
 
             // File picker row
-            let file_arrow = gtk::Image::builder()
-                .icon_name("go-next-symbolic")
-                .build();
+            let file_arrow = gtk::Image::builder().icon_name("go-next-symbolic").build();
             let file_row = adw::ActionRow::builder()
                 .title(gettext("Browse for .torrent file"))
                 .activatable(true)
@@ -94,9 +90,7 @@ mod imp {
             file_group.add(&file_row);
 
             // Options
-            let folder_arrow = gtk::Image::builder()
-                .icon_name("go-next-symbolic")
-                .build();
+            let folder_arrow = gtk::Image::builder().icon_name("go-next-symbolic").build();
             let download_folder_row = adw::ActionRow::builder()
                 .title(gettext("Download Folder"))
                 .activatable(true)
@@ -121,9 +115,7 @@ mod imp {
             options_group.add(&sequential_switch);
 
             // Hidden folder label
-            let folder_label = gtk::Label::builder()
-                .visible(false)
-                .build();
+            let folder_label = gtk::Label::builder().visible(false).build();
 
             // Main content box
             let content_box = gtk::Box::new(gtk::Orientation::Vertical, 18);
@@ -153,7 +145,8 @@ mod imp {
             self.folder_label.replace(Some(folder_label));
             self.file_row.replace(Some(file_row));
             self.download_folder_row.replace(Some(download_folder_row));
-            self.start_immediately_switch.replace(Some(start_immediately_switch));
+            self.start_immediately_switch
+                .replace(Some(start_immediately_switch));
             self.sequential_switch.replace(Some(sequential_switch));
             self.url_group.replace(Some(url_group));
             self.file_group.replace(Some(file_group));
@@ -196,7 +189,11 @@ impl RillAddDialog {
     }
 
     fn start_immediately_switch(&self) -> adw::SwitchRow {
-        self.imp().start_immediately_switch.borrow().clone().unwrap()
+        self.imp()
+            .start_immediately_switch
+            .borrow()
+            .clone()
+            .unwrap()
     }
 
     fn sequential_switch(&self) -> adw::SwitchRow {
@@ -270,7 +267,10 @@ impl RillAddDialog {
 
     pub fn set_selected_file(&self, path: &std::path::Path) {
         self.imp().selected_file.replace(Some(path.to_path_buf()));
-        let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or("torrent");
+        let filename = path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("torrent");
         self.file_row().set_subtitle(filename);
         self.add_btn().set_sensitive(true);
     }
@@ -340,7 +340,8 @@ impl RillAddDialog {
                             let storage = storage.clone();
                             let folder = path.to_string_lossy().to_string();
                             glib::spawn_future_local(async move {
-                                if let Ok(mut settings) = storage.query(|s| s.load_settings()).await {
+                                if let Ok(mut settings) = storage.query(|s| s.load_settings()).await
+                                {
                                     settings.download_folder = folder;
                                     storage.execute(move |s| {
                                         let _ = s.save_settings(&settings);
@@ -408,7 +409,8 @@ impl RillAddDialog {
             });
             let engine_clone = engine.clone();
             let tx_clone = tx.clone();
-            let window_weak = self.transient_for()
+            let window_weak = self
+                .transient_for()
                 .and_then(|t| t.downcast::<crate::application::RillWindow>().ok());
             glib::spawn_future_local(async move {
                 // Resolve the real torrent name from metadata off the GTK thread
@@ -426,9 +428,13 @@ impl RillAddDialog {
                 .unwrap_or_else(|_| (fallback_name, file_path.to_string_lossy().to_string()));
 
                 let info_hash = if start_immediately {
-                    engine_clone.borrow_mut().start(name, path_str, dir, sequential, tx_clone)
+                    engine_clone
+                        .borrow_mut()
+                        .start(name, path_str, dir, sequential, tx_clone)
                 } else {
-                    engine_clone.borrow_mut().add_paused(name, path_str, dir, sequential, tx_clone)
+                    engine_clone
+                        .borrow_mut()
+                        .add_paused(name, path_str, dir, sequential, tx_clone)
                 };
                 if let Some(w) = window_weak {
                     w.allow_torrent(&info_hash);
@@ -441,13 +447,18 @@ impl RillAddDialog {
                 let dir = download_dir.clone().unwrap_or_else(|| PathBuf::from("."));
                 let engine_clone = engine.clone();
                 let tx_clone = tx.clone();
-                let window_weak = self.transient_for()
+                let window_weak = self
+                    .transient_for()
                     .and_then(|t| t.downcast::<crate::application::RillWindow>().ok());
                 glib::spawn_future_local(async move {
                     let info_hash = if start_immediately {
-                        engine_clone.borrow_mut().start(name, url, dir, sequential, tx_clone)
+                        engine_clone
+                            .borrow_mut()
+                            .start(name, url, dir, sequential, tx_clone)
                     } else {
-                        engine_clone.borrow_mut().add_paused(name, url, dir, sequential, tx_clone)
+                        engine_clone
+                            .borrow_mut()
+                            .add_paused(name, url, dir, sequential, tx_clone)
                     };
                     if let Some(w) = window_weak {
                         w.allow_torrent(&info_hash);
@@ -493,10 +504,7 @@ fn extract_name_from_uri(uri: &str) -> String {
 /// Returns `(real_name, path_to_use)` on success.  The caller should
 /// pass the returned path to the engine so mtorrent creates a download
 /// subfolder matching the real torrent name.
-fn resolve_torrent_file_path(
-    file_path: &PathBuf,
-    config_dir: &PathBuf,
-) -> Option<(String, String)> {
+fn resolve_torrent_file_path(file_path: &Path, config_dir: &Path) -> Option<(String, String)> {
     use mtorrent::utils::re_exports::mtorrent_core::input::Metainfo;
 
     let meta = Metainfo::from_file(file_path).ok()?;
@@ -516,10 +524,7 @@ fn resolve_torrent_file_path(
         real_name
     };
 
-    let original_stem = file_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let original_stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
     // Sanitise the folder stem for use as a filename.
     // Only strip characters that are actually invalid/problematic on
@@ -535,11 +540,18 @@ fn resolve_torrent_file_path(
         .trim()
         .trim_end_matches('.')
         .to_string();
-    let safe_name = if safe_name.is_empty() { "torrent".to_string() } else { safe_name };
+    let safe_name = if safe_name.is_empty() {
+        "torrent".to_string()
+    } else {
+        safe_name
+    };
 
     // If the filename stem already matches, no copy is needed.
     if safe_name == original_stem {
-        return Some((real_name.to_string(), file_path.to_string_lossy().to_string()));
+        return Some((
+            real_name.to_string(),
+            file_path.to_string_lossy().to_string(),
+        ));
     }
 
     let torrents_dir = config_dir.join("torrents");
@@ -550,14 +562,21 @@ fn resolve_torrent_file_path(
         Ok(_) => {
             log::info!(
                 "Copied .torrent file to {:?} (real name: '{}')",
-                new_path, real_name
+                new_path,
+                real_name
             );
-            Some((real_name.to_string(), new_path.to_string_lossy().to_string()))
+            Some((
+                real_name.to_string(),
+                new_path.to_string_lossy().to_string(),
+            ))
         }
         Err(e) => {
             log::warn!("Failed to copy .torrent file for rename: {}", e);
             // Still return the real name even if copy failed.
-            Some((real_name.to_string(), file_path.to_string_lossy().to_string()))
+            Some((
+                real_name.to_string(),
+                file_path.to_string_lossy().to_string(),
+            ))
         }
     }
 }

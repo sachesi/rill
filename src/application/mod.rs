@@ -1,13 +1,13 @@
 mod add_dialog;
 mod app;
-mod window;
+mod info_dialog;
 mod preferences;
 mod torrent_row;
-mod info_dialog;
 mod tray;
+mod window;
 
-pub use add_dialog::{RillAddDialog, AddMode};
+pub use add_dialog::{AddMode, RillAddDialog};
 pub use app::RillApplication;
-pub use window::RillWindow;
-pub use preferences::show_preferences;
 pub use info_dialog::RillInfoDialog;
+pub use preferences::show_preferences;
+pub use window::RillWindow;
