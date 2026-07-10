@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: rill\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-02 00:00+0000\n"
+"POT-Creation-Date: 2026-07-10 23:57+0300\n"
 "PO-Revision-Date: 2026-06-02 00:00+0000\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian\n"
@@ -14,295 +14,569 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-msgid "0 means random port"
-msgstr "0 — випадковий порт"
-
-msgid "0 means unlimited"
-msgstr "0 — без обмежень"
-
-msgid "Add"
-msgstr "Додати"
-
-msgid "Add Torrent"
-msgstr "Додати торент"
-
-msgid "Add Torrent File"
-msgstr "Додати торент-файл"
-
-msgid "Add Torrent Link"
-msgstr "Додати посилання на торент"
-
-msgid "Are you sure you want to delete \"{name}\"? This action cannot be undone."
-msgstr "Ви впевнені, що хочете видалити «{name}»? Цю дію неможливо скасувати."
-
-msgid "Are you sure you want to delete {count} selected torrents? This action cannot be undone."
-msgstr "Ви впевнені, що хочете видалити вибрані торенти ({count})? Цю дію неможливо скасувати."
-
-msgid "Bandwidth Limits"
-msgstr "Обмеження пропускної здатності"
-
-msgid "BitTorrent client"
-msgstr "Клієнт BitTorrent"
-
-msgid "Browse for .torrent file"
-msgstr "Вибрати файл .torrent"
-
+#: src/application/add_dialog.rs:57 src/application/window.rs:239
+#: src/application/window.rs:607 src/application/window.rs:1321
 msgid "Cancel"
 msgstr "Скасувати"
 
-msgid "Choose Download Folder"
-msgstr "Виберіть теку завантаження"
+#: src/application/add_dialog.rs:61
+msgid "Add"
+msgstr "Додати"
 
-msgid "Choose Folder"
-msgstr "Вибрати теку"
+#: src/application/add_dialog.rs:76
+msgid "Magnet Link"
+msgstr "Magnet-посилання"
 
-msgid "Completed"
-msgstr "Завершено"
+#: src/application/add_dialog.rs:95
+msgid "Browse for .torrent file"
+msgstr "Вибрати файл .torrent"
 
-msgid "Connected"
-msgstr "З’єднано"
-
-msgid "Connected Peers"
-msgstr "Підключені піри"
-
-msgid "Connection"
-msgstr "З’єднання"
-
-msgid "Contents"
-msgstr "Вміст"
-
-msgid "Debug"
-msgstr "Зневадження"
-
-msgid "Delete"
-msgstr "Видалити"
-
-msgid "Delete Selected Torrents?"
-msgstr "Видалити вибрані торенти?"
-
-msgid "Delete Torrent?"
-msgstr "Видалити торент?"
-
-msgid "Delete downloaded data files"
-msgstr "Видалити завантажені файли даних"
-
-msgid "Details"
-msgstr "Подробиці"
-
-msgid "Done"
-msgstr "Готово"
-
-msgid "Download Complete"
-msgstr "Завантаження завершено"
-
+#: src/application/add_dialog.rs:106 src/application/info_dialog.rs:244
+#: src/application/preferences.rs:34
 msgid "Download Folder"
 msgstr "Тека завантаження"
 
-msgid "Download Limit (KiB/s)"
-msgstr "Обмеження завантаження (КіБ/с)"
-
-msgid "Download Speed"
-msgstr "Швидкість завантаження"
-
-msgid "Download from start to finish (sequential)"
-msgstr "Завантажувати від початку до кінця (послідовно)"
-
-msgid "Downloading"
-msgstr "Завантаження"
-
-msgid "Downloads"
-msgstr "Завантаження"
-
-msgid "Error"
-msgstr "Помилка"
-
-msgid "Estimated Time (ETA)"
-msgstr "Орієнтовний час (ETA)"
-
-msgid "Files"
-msgstr "Файли"
-
-msgid "General"
-msgstr "Загальні"
-
-msgid "Info"
-msgstr "Інформація"
-
-msgid "Listening Port"
-msgstr "Порт прослуховування"
-
-msgid "Log Level"
-msgstr "Рівень журналювання"
-
-msgid "Log Operations"
-msgstr "Журналювати операції"
-
-msgid "Log detailed start/stop/pause/resume events"
-msgstr "Журналювати докладні події запуску/зупинки/паузи/відновлення"
-
-msgid "Logging"
-msgstr "Журналювання"
-
-msgid "Magnet Link or HTTP URL"
-msgstr "Magnet-посилання або HTTP URL"
-
-msgid "Main Menu"
-msgstr "Головне меню"
-
-msgid "Max Downloads"
-msgstr "Макс. завантажень"
-
-msgid "Max Uploads"
-msgstr "Макс. вивантажень"
-
-msgid "Minimalistic GTK4/Libadwaita BitTorrent client"
-msgstr "Мінімалістичний клієнт BitTorrent на GTK4/Libadwaita"
-
-msgid "Network"
-msgstr "Мережа"
-
-msgid "No Torrents"
-msgstr "Немає торентів"
-
-msgid "No active peers connected."
-msgstr "Немає активних підключених пірів."
-
-msgid "Options"
-msgstr "Параметри"
-
-msgid "Overview"
-msgstr "Огляд"
-
-msgid "Paused"
-msgstr "Призупинено"
-
-msgid "Peers"
-msgstr "Піри"
-
-msgid "Peers Count"
-msgstr "Кількість пірів"
-
-msgid "Preferences"
-msgstr "Налаштування"
-
-msgid "Quit"
-msgstr "Вийти"
-
-msgid "S_top selected"
-msgstr "З_упинити вибрані"
-
-msgid "Save Folder"
-msgstr "Тека збереження"
-
-msgid "Search Torrents"
-msgstr "Пошук торентів"
-
-msgid "Search torrents…"
-msgstr "Пошук торентів…"
-
-msgid "Seeding Ratio"
-msgstr "Коефіцієнт роздачі"
-
-msgid "Select Torrent File"
-msgstr "Виберіть торент-файл"
-
-msgid "Select Torrents"
-msgstr "Вибір торентів"
-
-msgid "Select _all"
-msgstr "Вибрати _все"
-
-msgid "Show Rill"
-msgstr "Показати Rill"
-
-msgid "Source URI"
-msgstr "URI джерела"
-
+#: src/application/add_dialog.rs:112
 msgid "Start download immediately"
 msgstr "Почати завантаження негайно"
 
-msgid "Storage and Source"
-msgstr "Сховище та джерело"
+#: src/application/add_dialog.rs:117 src/application/info_dialog.rs:250
+msgid "Download from start to finish (sequential)"
+msgstr "Завантажувати від початку до кінця (послідовно)"
 
-msgid "Torrent {id}"
-msgstr "Торент {id}"
+#: src/application/add_dialog.rs:122 src/application/info_dialog.rs:301
+msgid "Options"
+msgstr "Параметри"
 
-msgid "Trace"
-msgstr "Трасування"
+#: src/application/add_dialog.rs:258
+msgid "Add Magnet Link"
+msgstr "Додати magnet-посилання"
 
-msgid "Trackers"
-msgstr "Трекери"
+#: src/application/add_dialog.rs:268
+msgid "Add Torrent File"
+msgstr "Додати торент-файл"
 
-msgid "Transfer Queue"
-msgstr "Черга передавання"
+#: src/application/add_dialog.rs:332 src/application/window.rs:856
+msgid "Select Torrent File"
+msgstr "Виберіть торент-файл"
 
-msgid "Unknown File"
-msgstr "Невідомий файл"
+#: src/application/add_dialog.rs:358
+msgid "Choose Download Folder"
+msgstr "Виберіть теку завантаження"
 
-msgid "Upload Limit (KiB/s)"
-msgstr "Обмеження вивантаження (КіБ/с)"
+#: src/application/add_dialog.rs:432
+msgid "Not a valid magnet link"
+msgstr "Некоректне magnet-посилання"
 
+#: src/application/add_dialog.rs:480
+#, rust-format
+msgid "{name} is not a valid torrent file"
+msgstr "{name} не є коректним торент-файлом"
+
+#: src/application/info_dialog.rs:175
+msgid "Details"
+msgstr "Подробиці"
+
+#: src/application/info_dialog.rs:182
+msgid "Download Speed"
+msgstr "Швидкість завантаження"
+
+#: src/application/info_dialog.rs:191
 msgid "Upload Speed"
 msgstr "Швидкість вивантаження"
 
-msgid "Warn"
-msgstr "Попередження"
+#: src/application/info_dialog.rs:199 src/application/info_dialog.rs:464
+msgid "Peers"
+msgstr "Піри"
 
-msgid "_About Rill"
-msgstr "_Про Rill"
+#: src/application/info_dialog.rs:207
+msgid "Time Remaining"
+msgstr "Залишилося часу"
 
-msgid "_Add Magnet Link…"
-msgstr "Додати _magnet-посилання…"
+#: src/application/info_dialog.rs:213
+msgid "Storage and Source"
+msgstr "Сховище та джерело"
 
-msgid "_Add Torrent File…"
-msgstr "Додати _торент-файл…"
+#: src/application/info_dialog.rs:222
+msgid "Source URI"
+msgstr "URI джерела"
 
-msgid "_Deselect all"
-msgstr "_Зняти вибір з усіх"
-
-msgid "_Open"
-msgstr "_Відкрити"
-
-msgid "_Pause"
-msgstr "_Призупинити"
-
-msgid "_Preferences"
-msgstr "_Налаштування"
-
-msgid "_Quit"
-msgstr "Ви_йти"
-
-msgid "_Remove"
-msgstr "_Вилучити"
-
-msgid "_Remove selected"
-msgstr "_Вилучити вибрані"
-
-msgid "_Resume"
-msgstr "_Відновити"
-
-msgid "_Select"
-msgstr "_Вибрати"
-
-msgid "_Start selected"
-msgstr "_Запустити вибрані"
-
-msgid "{count} selected"
-msgstr "Вибрано: {count}"
-
-msgid "{downloaded} of {total}"
-msgstr "{downloaded} з {total}"
-
-msgid "{downloaded} of {total}{speed} · {peers} peers"
-msgstr "{downloaded} з {total}{speed} · пірів: {peers}"
-
-msgid "{name} has finished downloading"
-msgstr "{name} завершено завантаження"
-
+#: src/application/info_dialog.rs:224
 msgid "Click to copy"
 msgstr "Натисніть, щоб скопіювати"
 
+#: src/application/info_dialog.rs:233
 msgid "Copied to clipboard"
 msgstr "Скопійовано до буфера обміну"
+
+#: src/application/info_dialog.rs:290
+msgid "Could not save the sequential setting"
+msgstr "Не вдалося зберегти налаштування послідовного завантаження"
+
+#: src/application/info_dialog.rs:319
+msgid "Overview"
+msgstr "Огляд"
+
+#: src/application/info_dialog.rs:334
+msgid "Contents"
+msgstr "Вміст"
+
+#: src/application/info_dialog.rs:341
+msgid "File list appears once metadata is downloaded"
+msgstr "Список файлів з'явиться після завантаження метаданих"
+
+#: src/application/info_dialog.rs:424
+msgid "Files"
+msgstr "Файли"
+
+#: src/application/info_dialog.rs:436
+msgid "Connected Peers"
+msgstr "Підключені піри"
+
+#: src/application/info_dialog.rs:446
+msgid "No active peers connected"
+msgstr "Немає підключених активних пірів"
+
+#: src/application/info_dialog.rs:476 src/application/info_dialog.rs:504
+msgid "Trackers"
+msgstr "Трекери"
+
+#: src/application/info_dialog.rs:486
+msgid "No trackers found"
+msgstr "Трекерів не знайдено"
+
+#: src/application/info_dialog.rs:701 src/application/window.rs:129
+msgid "Downloading"
+msgstr "Завантаження"
+
+#: src/application/info_dialog.rs:703 src/application/window.rs:144
+msgid "Paused"
+msgstr "Призупинено"
+
+#: src/application/info_dialog.rs:704 src/application/window.rs:159
+msgid "Completed"
+msgstr "Завершено"
+
+#: src/application/info_dialog.rs:705 src/application/preferences.rs:104
+msgid "Error"
+msgstr "Помилка"
+
+#: src/application/info_dialog.rs:718
+#, rust-format
+msgid "{downloaded} of {total}"
+msgstr "{downloaded} з {total}"
+
+#: src/application/info_dialog.rs:736
+msgid "Done"
+msgstr "Готово"
+
+#: src/application/info_dialog.rs:871
+msgid "Connected"
+msgstr "З’єднано"
+
+#: src/application/info_dialog.rs:939
+msgid "Unknown File"
+msgstr "Невідомий файл"
+
+#: src/application/info_dialog.rs:1000 src/application/info_dialog.rs:1006
+#, rust-format
+msgid "{s}s"
+msgstr "{s}с"
+
+#: src/application/info_dialog.rs:1008
+#, rust-format
+msgid "{m}m {s}s"
+msgstr "{m}хв {s}с"
+
+#: src/application/info_dialog.rs:1012
+#, rust-format
+msgid "{h}h {m}m"
+msgstr "{h}год {m}хв"
+
+#: src/application/info_dialog.rs:1016
+#, rust-format
+msgid "{d}d {h}h"
+msgstr "{d}д {h}год"
+
+#: src/application/preferences.rs:12
+msgid "Preferences"
+msgstr "Налаштування"
+
+#: src/application/preferences.rs:25
+msgid "General"
+msgstr "Загальні"
+
+#: src/application/preferences.rs:30
+msgid "Downloads"
+msgstr "Завантаження"
+
+#: src/application/preferences.rs:40
+msgid "Choose Folder"
+msgstr "Вибрати теку"
+
+#: src/application/preferences.rs:51
+#, rust-format
+msgid "Failed to save download folder: {error}"
+msgstr "Не вдалося зберегти теку завантаження: {error}"
+
+#: src/application/preferences.rs:95
+msgid "Logging"
+msgstr "Журналювання"
+
+#: src/application/preferences.rs:100 src/application/preferences.rs:113
+msgid "Log Level"
+msgstr "Рівень журналювання"
+
+#: src/application/preferences.rs:105
+msgid "Warn"
+msgstr "Попередження"
+
+#: src/application/preferences.rs:106
+msgid "Info"
+msgstr "Інформація"
+
+#: src/application/preferences.rs:107
+msgid "Debug"
+msgstr "Зневадження"
+
+#: src/application/preferences.rs:108
+msgid "Trace"
+msgstr "Трасування"
+
+#: src/application/preferences.rs:127
+msgid "Log Operations"
+msgstr "Журналювати операції"
+
+#: src/application/preferences.rs:131
+msgid "Log detailed start/stop/pause/resume events"
+msgstr "Журналювати докладні події запуску/зупинки/паузи/відновлення"
+
+#: src/application/preferences.rs:157
+#, rust-format
+msgid "Failed to save log level: {error}"
+msgstr "Не вдалося зберегти рівень журналювання: {error}"
+
+#: src/application/preferences.rs:171
+#, rust-format
+msgid "Failed to save logging options: {error}"
+msgstr "Не вдалося зберегти параметри журналювання: {error}"
+
+#: src/application/preferences.rs:179
+msgid "Network"
+msgstr "Мережа"
+
+#: src/application/preferences.rs:184
+msgid "Bandwidth Limits"
+msgstr "Обмеження пропускної здатності"
+
+#: src/application/preferences.rs:196
+msgid "Download Limit (KiB/s)"
+msgstr "Обмеження завантаження (КіБ/с)"
+
+#: src/application/preferences.rs:200 src/application/preferences.rs:215
+msgid "0 means unlimited"
+msgstr "0 — без обмежень"
+
+#: src/application/preferences.rs:211
+msgid "Upload Limit (KiB/s)"
+msgstr "Обмеження вивантаження (КіБ/с)"
+
+#: src/application/preferences.rs:222
+msgid "Connection"
+msgstr "З’єднання"
+
+#: src/application/preferences.rs:227
+msgid "Listening Port"
+msgstr "Порт прослуховування"
+
+#: src/application/preferences.rs:231
+msgid "0 means random port"
+msgstr "0 — випадковий порт"
+
+#: src/application/preferences.rs:237
+msgid "Transfer Queue"
+msgstr "Черга передавання"
+
+#: src/application/preferences.rs:249
+msgid "Max Downloads"
+msgstr "Макс. завантажень"
+
+#: src/application/preferences.rs:257
+msgid "Max Uploads"
+msgstr "Макс. вивантажень"
+
+#: src/application/preferences.rs:264
+msgid "Seeding Ratio"
+msgstr "Коефіцієнт роздачі"
+
+#: src/application/preferences.rs:286
+#, rust-format
+msgid "Failed to save port: {error}"
+msgstr "Не вдалося зберегти порт: {error}"
+
+#: src/application/preferences.rs:298
+#, rust-format
+msgid "Failed to save download limit: {error}"
+msgstr "Не вдалося зберегти ліміт завантаження: {error}"
+
+#: src/application/preferences.rs:311
+#, rust-format
+msgid "Failed to save upload limit: {error}"
+msgstr "Не вдалося зберегти ліміт віддачі: {error}"
+
+#: src/application/preferences.rs:324
+#, rust-format
+msgid "Failed to save max downloads: {error}"
+msgstr "Не вдалося зберегти максимум завантажень: {error}"
+
+#: src/application/preferences.rs:337
+#, rust-format
+msgid "Failed to save max uploads: {error}"
+msgstr "Не вдалося зберегти максимум роздач: {error}"
+
+#: src/application/preferences.rs:349
+#, rust-format
+msgid "Failed to save seeding ratio: {error}"
+msgstr "Не вдалося зберегти коефіцієнт роздачі: {error}"
+
+#: src/application/torrent_row.rs:332
+msgid "Pause"
+msgstr "Призупинити"
+
+#: src/application/torrent_row.rs:346
+msgid "Resume"
+msgstr "Відновити"
+
+#: src/application/torrent_row.rs:360 src/application/torrent_row.rs:371
+#: src/application/window.rs:608 src/application/window.rs:1322
+msgid "Delete"
+msgstr "Видалити"
+
+#: src/application/torrent_row.rs:382
+#, rust-format
+msgid "Torrent {id}"
+msgstr "Торент {id}"
+
+#: src/application/torrent_row.rs:393
+#, rust-format
+msgid "{n} peer"
+msgid_plural "{n} peers"
+msgstr[0] "{n} пір"
+msgstr[1] "{n} піри"
+msgstr[2] "{n} пірів"
+
+#: src/application/torrent_row.rs:395
+#, rust-format
+msgid "{downloaded} of {total}{speed} · {peers}"
+msgstr "{downloaded} з {total}{speed} · {peers}"
+
+#: src/application/torrent_row.rs:444
+msgid "Select _All"
+msgstr "Вибрати _все"
+
+#: src/application/torrent_row.rs:448
+msgid "_Deselect All"
+msgstr "_Зняти вибір"
+
+#: src/application/torrent_row.rs:452
+msgid "_Resume Selected"
+msgstr "_Відновити вибрані"
+
+#: src/application/torrent_row.rs:456
+msgid "_Pause Selected"
+msgstr "_Призупинити вибрані"
+
+#: src/application/torrent_row.rs:460
+msgid "De_lete Selected"
+msgstr "Ви_далити вибрані"
+
+#: src/application/torrent_row.rs:564
+msgid "_Pause"
+msgstr "_Призупинити"
+
+#: src/application/torrent_row.rs:567
+msgid "_Resume"
+msgstr "_Відновити"
+
+#: src/application/torrent_row.rs:572
+msgid "_Retry"
+msgstr "_Повторити"
+
+#: src/application/torrent_row.rs:577
+msgid "_Open"
+msgstr "_Відкрити"
+
+#: src/application/torrent_row.rs:579
+msgid "_Select"
+msgstr "_Вибрати"
+
+#: src/application/torrent_row.rs:580
+msgid "_Delete"
+msgstr "_Видалити"
+
+#: src/application/torrent_row.rs:687
+#, rust-format
+msgid "Could not open folder: {error}"
+msgstr "Не вдалося відкрити теку: {error}"
+
+#: src/application/tray.rs:35
+msgid "BitTorrent client"
+msgstr "Клієнт BitTorrent"
+
+#: src/application/tray.rs:50
+msgid "Show Rill"
+msgstr "Показати Rill"
+
+#: src/application/tray.rs:60
+msgid "Quit"
+msgstr "Вийти"
+
+#: src/application/window.rs:122
+msgid "No Torrents"
+msgstr "Немає торентів"
+
+#: src/application/window.rs:123
+msgid "Add a magnet link or .torrent file to get started"
+msgstr "Додайте magnet-посилання або файл .torrent, щоб почати"
+
+#: src/application/window.rs:251
+msgid "Search torrents…"
+msgstr "Пошук торентів…"
+
+#: src/application/window.rs:261
+msgid "Search Torrents"
+msgstr "Пошук торентів"
+
+#: src/application/window.rs:282
+msgid "_Add Torrent File…"
+msgstr "Додати _торент-файл…"
+
+#: src/application/window.rs:286
+msgid "_Add Magnet Link…"
+msgstr "Додати _magnet-посилання…"
+
+#: src/application/window.rs:292
+msgid "Add Torrent"
+msgstr "Додати торент"
+
+#: src/application/window.rs:300
+msgid "_Preferences"
+msgstr "_Налаштування"
+
+#: src/application/window.rs:305
+msgid "_About Rill"
+msgstr "_Про Rill"
+
+#: src/application/window.rs:306
+msgid "_Quit"
+msgstr "Ви_йти"
+
+#: src/application/window.rs:313
+msgid "Main Menu"
+msgstr "Головне меню"
+
+#: src/application/window.rs:590 src/application/window.rs:1308
+msgid "Delete downloaded data files"
+msgstr "Видалити завантажені файли даних"
+
+#: src/application/window.rs:597
+msgid "Delete Torrent?"
+msgstr "Видалити торент?"
+
+#: src/application/window.rs:600
+#, rust-format
+msgid ""
+"Are you sure you want to delete \"{name}\"? This action cannot be undone."
+msgstr "Ви впевнені, що хочете видалити «{name}»? Цю дію неможливо скасувати."
+
+#: src/application/window.rs:702
+#, rust-format
+msgid "Failed to delete data: {error}"
+msgstr "Не вдалося видалити дані: {error}"
+
+#: src/application/window.rs:715
+msgid "Could not resolve torrent data path"
+msgstr "Не вдалося визначити шлях до даних торента"
+
+#: src/application/window.rs:723
+msgid "Could not locate torrent data to delete"
+msgstr "Не вдалося знайти дані торента для видалення"
+
+#: src/application/window.rs:784
+msgid "Rill is still running"
+msgstr "Rill продовжує працювати"
+
+#: src/application/window.rs:786
+msgid ""
+"Downloads continue in the background. Use the tray icon to reopen or quit."
+msgstr ""
+"Завантаження продовжуються у фоні. Скористайтеся значком у системному лотку, "
+"щоб відкрити вікно або вийти."
+
+#: src/application/window.rs:921
+#, rust-format
+msgid "Download failed: {error}"
+msgstr "Не вдалося завантажити: {error}"
+
+#: src/application/window.rs:967
+msgid "Download Complete"
+msgstr "Завантаження завершено"
+
+#: src/application/window.rs:969
+#, rust-format
+msgid "{name} has finished downloading"
+msgstr "{name} завершено завантаження"
+
+#: src/application/window.rs:1071
+#, rust-format
+msgid "Could not save torrent: {error}"
+msgstr "Не вдалося зберегти торент: {error}"
+
+#: src/application/window.rs:1208
+msgid "Select Torrents"
+msgstr "Вибір торентів"
+
+#: src/application/window.rs:1209
+#, rust-format
+msgid "{count} selected"
+msgstr "Вибрано: {count}"
+
+#: src/application/window.rs:1316
+msgid "Delete Selected Torrents?"
+msgstr "Видалити вибрані торенти?"
+
+#: src/application/window.rs:1317
+#, rust-format
+msgid ""
+"Are you sure you want to delete {count} selected torrents? This action "
+"cannot be undone."
+msgstr ""
+"Ви впевнені, що хочете видалити вибрані торенти ({count})? Цю дію неможливо "
+"скасувати."
+
+#~ msgid "Add Torrent Link"
+#~ msgstr "Додати посилання на торент"
+
+#~ msgid "Estimated Time (ETA)"
+#~ msgstr "Орієнтовний час (ETA)"
+
+#~ msgid "Magnet Link or HTTP URL"
+#~ msgstr "Magnet-посилання або HTTP URL"
+
+#~ msgid "Minimalistic GTK4/Libadwaita BitTorrent client"
+#~ msgstr "Мінімалістичний клієнт BitTorrent на GTK4/Libadwaita"
+
+#~ msgid "Peers Count"
+#~ msgstr "Кількість пірів"
+
+#~ msgid "S_top selected"
+#~ msgstr "З_упинити вибрані"
+
+#~ msgid "Save Folder"
+#~ msgstr "Тека збереження"
+
+#~ msgid "_Remove"
+#~ msgstr "_Вилучити"

@@ -78,6 +78,7 @@ struct ActiveTorrent {
 
 enum EngineCmd {
     Start {
+        info_hash: String,
         name: String,
         uri: String,
         output_dir: PathBuf,
@@ -142,13 +143,12 @@ impl TorrentEngine {
                 local.run_until(async {
                     while let Some(cmd) = cmd_rx.recv().await {
                         match cmd {
-                            EngineCmd::Start { name, uri, output_dir, canceller, cancel_rx, cancel_flag, ui_tx, sequential, pwp_port } => {
+                            EngineCmd::Start { info_hash, name, uri, output_dir, canceller, cancel_rx, cancel_flag, ui_tx, sequential, pwp_port } => {
                                 let pid = peer_id_clone;
                                 let cd = config_dir_clone.clone();
                                 let pwp = pwp_clone.clone();
                                 let stor = storage_clone.clone();
                                 let dht = dht_clone.clone();
-                                let info_hash = hash_uri(&uri);
                                 // mtorrent derives the metainfo filename and the
                                 // download subfolder from the magnet's `dn` value,
                                 // then writes the fetched metainfo with a bare
@@ -280,7 +280,7 @@ impl TorrentEngine {
         sequential: bool,
         ui_tx: Sender<UiEvent>,
     ) -> String {
-        let info_hash = hash_uri(&uri);
+        let info_hash = torrent_id(&uri);
         let mut map = lock_recover(&self.active, "active map");
 
         if let Some(existing) = map.get(&info_hash) {
@@ -324,6 +324,7 @@ impl TorrentEngine {
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let seq = Arc::new(std::sync::atomic::AtomicBool::new(sequential));
         if let Err(e) = self.cmd_tx.try_send(EngineCmd::Start {
+            info_hash: info_hash.clone(),
             name: name.clone(),
             uri: uri.clone(),
             output_dir: output_dir.clone(),
@@ -387,7 +388,7 @@ impl TorrentEngine {
         sequential: bool,
         ui_tx: Sender<UiEvent>,
     ) -> String {
-        let info_hash = hash_uri(&uri);
+        let info_hash = torrent_id(&uri);
         let mut map = lock_recover(&self.saved, "saved map");
 
         if let Some(existing) = map.get(&info_hash) {
@@ -469,7 +470,7 @@ impl TorrentEngine {
         sequential: bool,
         ui_tx: Sender<UiEvent>,
     ) -> String {
-        let info_hash = hash_uri(&uri);
+        let info_hash = torrent_id(&uri);
         let mut map = lock_recover(&self.saved, "saved map");
 
         if let Some(existing) = map.get(&info_hash) {
@@ -503,6 +504,22 @@ impl TorrentEngine {
         );
 
         info_hash
+    }
+
+    /// Moves a torrent that terminated with an error from the active map to the
+    /// saved map, so the UI can offer resume (which restarts the task) instead of
+    /// leaving a dead entry that can only be paused.
+    pub fn mark_failed(&self, info_hash: &str) {
+        let mut active_map = lock_recover(&self.active, "active map");
+        if let Some(mut torrent) = active_map.remove(info_hash) {
+            torrent
+                .cancel_flag
+                .store(true, std::sync::atomic::Ordering::Release);
+            torrent.canceller = None;
+            torrent.cancel_tx = None;
+            drop(active_map);
+            lock_recover(&self.saved, "saved map").insert(info_hash.to_string(), torrent);
+        }
     }
 
     /// Stops and removes the torrent from the engine entirely.
@@ -575,6 +592,7 @@ impl TorrentEngine {
             let name = torrent.name.clone();
             let seq = Arc::clone(&torrent.sequential);
             if let Err(e) = self.cmd_tx.try_send(EngineCmd::Start {
+                info_hash: info_hash.to_string(),
                 name,
                 uri: torrent.uri.clone(),
                 output_dir: torrent.output_dir.clone(),
@@ -703,6 +721,31 @@ pub(crate) fn sanitize_magnet_dn(uri: &str) -> String {
     format!("{}{}{}", &uri[..value_start], encoded, &uri[value_end..])
 }
 
+#[cfg(test)]
+mod tests {
+    use super::torrent_id;
+
+    #[test]
+    fn torrent_id_uses_magnet_info_hash() {
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        let with_dn = format!("magnet:?xt=urn:btih:{hex}&dn=Some%20Name");
+        let without_dn = format!("magnet:?xt=urn:btih:{hex}");
+        // Same content, different URI text: identical identity.
+        assert_eq!(torrent_id(&with_dn), hex);
+        assert_eq!(torrent_id(&with_dn), torrent_id(&without_dn));
+    }
+
+    #[test]
+    fn torrent_id_falls_back_for_unparseable_uris() {
+        let a = torrent_id("not a magnet at all");
+        let b = torrent_id("not a magnet at all");
+        let c = torrent_id("something else");
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_eq!(a.len(), 40);
+    }
+}
+
 /// Locks a mutex, recovering from poisoning instead of panicking. A panic in one
 /// critical section must not cascade into every later operation; the poison is
 /// logged so silent state corruption is at least traceable.
@@ -718,4 +761,31 @@ fn hash_uri(uri: &str) -> String {
     let mut hasher = Sha1::new();
     hasher.update(uri.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+/// Canonical identity for a torrent: the real BitTorrent info hash (hex) when
+/// the URI is a parseable magnet link or `.torrent` file, so the same content
+/// added via magnet and via file maps to one entry instead of two concurrent
+/// downloads. Falls back to hashing the URI text when nothing parses.
+pub(crate) fn torrent_id(uri: &str) -> String {
+    use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
+    use std::fmt::Write;
+    use std::str::FromStr;
+
+    let hex = |hash: &[u8; 20]| {
+        hash.iter().fold(String::with_capacity(40), |mut s, b| {
+            let _ = write!(s, "{:02x}", b);
+            s
+        })
+    };
+
+    let path = std::path::Path::new(uri);
+    if path.is_file() {
+        if let Ok(meta) = Metainfo::from_file(path) {
+            return hex(meta.info_hash());
+        }
+    } else if let Ok(magnet) = MagnetLink::from_str(uri) {
+        return hex(magnet.info_hash());
+    }
+    hash_uri(uri)
 }

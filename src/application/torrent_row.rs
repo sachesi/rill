@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gettextrs::gettext;
+use gettextrs::{gettext, ngettext};
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
 
@@ -256,6 +256,21 @@ impl RillRow {
         self.imp().latest_update.clone()
     }
 
+    /// Reports pause/resume intent to the main window's queue bookkeeping, so a
+    /// manual pause is never auto-resumed by the queue-limit pass.
+    fn note_intent(&self, pausing: bool) {
+        if let Some(root) = self.root()
+            && let Ok(window) = root.downcast::<crate::application::RillWindow>()
+        {
+            let hash = self.info_hash();
+            if pausing {
+                window.note_user_pause(&hash);
+            } else {
+                window.note_user_resume(&hash);
+            }
+        }
+    }
+
     fn on_action(&self) {
         let imp = self.imp();
         let info_hash = imp.info_hash.borrow().clone();
@@ -263,6 +278,7 @@ impl RillRow {
         if let Some(engine) = imp.engine.borrow().as_ref() {
             match state {
                 TorrentUiState::Downloading => {
+                    self.note_intent(true);
                     self.update_ui_state(TorrentUiState::Paused);
                     if let Some(tx) = imp.tx.borrow().as_ref()
                         && let Some(prev) = imp.latest_update.borrow().as_ref()
@@ -276,6 +292,7 @@ impl RillRow {
                     engine.borrow().toggle(&info_hash);
                 }
                 TorrentUiState::Paused => {
+                    self.note_intent(false);
                     self.update_ui_state(TorrentUiState::Downloading);
                     if let Some(tx) = imp.tx.borrow().as_ref()
                         && let Some(prev) = imp.latest_update.borrow().as_ref()
@@ -311,7 +328,8 @@ impl RillRow {
                 self.action_icon()
                     .set_icon_name(Some("media-playback-pause-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
-                self.action_btn().set_tooltip_text(Some("Pause"));
+                self.action_btn()
+                    .set_tooltip_text(Some(gettext("Pause").as_str()));
                 // Full card at full opacity
                 self.row_box().set_opacity(1.0);
             }
@@ -324,7 +342,8 @@ impl RillRow {
                 self.action_icon()
                     .set_icon_name(Some("media-playback-start-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
-                self.action_btn().set_tooltip_text(Some("Resume"));
+                self.action_btn()
+                    .set_tooltip_text(Some(gettext("Resume").as_str()));
                 // Dim entire card
                 self.row_box().set_opacity(0.5);
             }
@@ -337,7 +356,8 @@ impl RillRow {
                 self.action_icon()
                     .set_icon_name(Some("user-trash-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
-                self.action_btn().set_tooltip_text(Some("Remove"));
+                self.action_btn()
+                    .set_tooltip_text(Some(gettext("Delete").as_str()));
                 self.row_box().set_opacity(1.0);
             }
             TorrentUiState::Error => {
@@ -347,7 +367,8 @@ impl RillRow {
                 self.action_icon()
                     .set_icon_name(Some("user-trash-symbolic"));
                 self.action_btn().set_css_classes(&["circular", "flat"]);
-                self.action_btn().set_tooltip_text(Some("Remove"));
+                self.action_btn()
+                    .set_tooltip_text(Some(gettext("Delete").as_str()));
                 self.row_box().set_opacity(1.0);
             }
         }
@@ -365,15 +386,17 @@ impl RillRow {
         self.name_lbl().set_text(&name);
 
         let speed = if update.speed_down > 0 {
-            format!(" · {}↓", format_size(update.speed_down))
+            format!(" · ↓ {}/s", format_size(update.speed_down))
         } else {
             String::new()
         };
-        let status = gettext("{downloaded} of {total}{speed} · {peers} peers")
+        let peers = ngettext("{n} peer", "{n} peers", update.peers as u32)
+            .replace("{n}", &update.peers.to_string());
+        let status = gettext("{downloaded} of {total}{speed} · {peers}")
             .replace("{downloaded}", &format_size(update.downloaded))
             .replace("{total}", &format_size(update.total))
             .replace("{speed}", &speed)
-            .replace("{peers}", &update.peers.to_string());
+            .replace("{peers}", &peers);
         self.status_lbl().set_text(&status);
 
         let fraction = if update.total > 0 {
@@ -396,13 +419,13 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
 
     // Directory holding this torrent's content: the per-torrent folder for
     // multi-file torrents, falling back to the download dir for single-file ones.
+    // The name goes through the same containment check as delete-with-data, so a
+    // path-like display name (e.g. a crafted magnet `dn`) cannot point "Open"
+    // outside the download directory.
     let content_dir = imp.latest_update.borrow().as_ref().map(|u| {
-        let dir = u.output_dir.join(&u.name);
-        if dir.is_dir() {
-            dir
-        } else {
-            u.output_dir.clone()
-        }
+        crate::application::contained_torrent_path(&u.output_dir, &u.name)
+            .filter(|dir| dir.is_dir())
+            .unwrap_or_else(|| u.output_dir.clone())
     });
 
     let is_selection = if let Some(root) = row.root()
@@ -418,23 +441,23 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
 
     if is_selection {
         menu.append(
-            Some(gettext("Select _all").as_str()),
+            Some(gettext("Select _All").as_str()),
             Some("ctx.select_all"),
         );
         menu.append(
-            Some(gettext("_Deselect all").as_str()),
+            Some(gettext("_Deselect All").as_str()),
             Some("ctx.deselect_all"),
         );
         menu.append(
-            Some(gettext("_Start selected").as_str()),
+            Some(gettext("_Resume Selected").as_str()),
             Some("ctx.start_selected"),
         );
         menu.append(
-            Some(gettext("S_top selected").as_str()),
+            Some(gettext("_Pause Selected").as_str()),
             Some("ctx.stop_selected"),
         );
         menu.append(
-            Some(gettext("_Remove selected").as_str()),
+            Some(gettext("De_lete Selected").as_str()),
             Some("ctx.remove_selected"),
         );
 
@@ -543,13 +566,18 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
             TorrentUiState::Paused => {
                 menu.append(Some(gettext("_Resume").as_str()), Some("ctx.resume"));
             }
-            TorrentUiState::Completed | TorrentUiState::Error => {}
+            // A failed torrent sits in the engine's saved map (mark_failed), so
+            // resuming restarts the task — the retry path for transient errors.
+            TorrentUiState::Error => {
+                menu.append(Some(gettext("_Retry").as_str()), Some("ctx.resume"));
+            }
+            TorrentUiState::Completed => {}
         }
         if content_dir.is_some() {
             menu.append(Some(gettext("_Open").as_str()), Some("ctx.open"));
         }
         menu.append(Some(gettext("_Select").as_str()), Some("ctx.select"));
-        menu.append(Some(gettext("_Remove").as_str()), Some("ctx.remove"));
+        menu.append(Some(gettext("_Delete").as_str()), Some("ctx.remove"));
 
         if let Some(old_popover) = imp.active_popover.borrow_mut().take() {
             old_popover.unparent();
@@ -573,6 +601,7 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
             let a = gio::SimpleAction::new("pause", None);
             let p_weak_clone = p_weak.clone();
             a.connect_activate(move |_, _| {
+                r.note_intent(true);
                 r.update_ui_state(TorrentUiState::Paused);
                 if let Some(tx) = r.imp().tx.borrow().as_ref()
                     && let Some(prev) = r.imp().latest_update.borrow().as_ref()
@@ -598,6 +627,7 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
             let a = gio::SimpleAction::new("resume", None);
             let p_weak_clone = p_weak.clone();
             a.connect_activate(move |_, _| {
+                r.note_intent(false);
                 r.update_ui_state(TorrentUiState::Downloading);
                 if let Some(tx) = r.imp().tx.borrow().as_ref()
                     && let Some(prev) = r.imp().latest_update.borrow().as_ref()
@@ -645,9 +675,19 @@ fn show_context_menu(row: &RillRow, x: f64, y: f64) {
                     .upgrade()
                     .and_then(|r| r.root())
                     .and_downcast::<gtk::Window>();
-                launcher.launch(parent.as_ref(), gio::Cancellable::NONE, |res| {
+                let toast_target = parent.clone();
+                launcher.launch(parent.as_ref(), gio::Cancellable::NONE, move |res| {
                     if let Err(e) = res {
                         log::warn!("Failed to open torrent directory: {}", e);
+                        if let Some(window) = toast_target
+                            .clone()
+                            .and_downcast::<crate::application::RillWindow>()
+                        {
+                            window.show_toast(
+                                &gettext("Could not open folder: {error}")
+                                    .replace("{error}", &e.to_string()),
+                            );
+                        }
                     }
                 });
                 if let Some(p) = p_weak.upgrade() {

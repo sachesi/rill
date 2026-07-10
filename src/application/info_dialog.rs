@@ -36,6 +36,9 @@ mod imp {
         pub peers_list_box: RefCell<Option<gtk::ListBox>>,
         pub trackers_list_box: RefCell<Option<gtk::ListBox>>,
 
+        pub files_empty_lbl: RefCell<Option<gtk::Label>>,
+        pub toast_overlay: RefCell<Option<adw::ToastOverlay>>,
+
         // Control and status state
         pub files_populated: RefCell<bool>,
         pub trackers_populated: RefCell<bool>,
@@ -93,11 +96,12 @@ mod imp {
             let toast_overlay = adw::ToastOverlay::new();
 
             // --- 1. OVERVIEW PAGE ---
+            // Same content margin as the other three tabs.
             let overview_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
-            overview_box.set_margin_top(16);
-            overview_box.set_margin_bottom(16);
-            overview_box.set_margin_start(16);
-            overview_box.set_margin_end(16);
+            overview_box.set_margin_top(12);
+            overview_box.set_margin_bottom(12);
+            overview_box.set_margin_start(12);
+            overview_box.set_margin_end(12);
 
             let status_header_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
             status_header_box.set_halign(gtk::Align::Center);
@@ -192,9 +196,7 @@ mod imp {
             let peers_lbl = gtk::Label::builder()
                 .css_classes(["body", "dim-label"])
                 .build();
-            let peers_row = adw::ActionRow::builder()
-                .title(gettext("Peers Count"))
-                .build();
+            let peers_row = adw::ActionRow::builder().title(gettext("Peers")).build();
             peers_row.add_suffix(&peers_lbl);
             details_group.add(&peers_row);
 
@@ -202,7 +204,7 @@ mod imp {
                 .css_classes(["body", "dim-label"])
                 .build();
             let eta_row = adw::ActionRow::builder()
-                .title(gettext("Estimated Time (ETA)"))
+                .title(gettext("Time Remaining"))
                 .build();
             eta_row.add_suffix(&eta_lbl);
             details_group.add(&eta_row);
@@ -239,7 +241,7 @@ mod imp {
                 .max_width_chars(35)
                 .build();
             let save_path_row = adw::ActionRow::builder()
-                .title(gettext("Save Folder"))
+                .title(gettext("Download Folder"))
                 .build();
             save_path_row.add_suffix(&save_path_lbl);
             paths_group.add(&save_path_row);
@@ -274,9 +276,20 @@ mod imp {
                         if let Some(storage) = obj.imp().storage.borrow().as_ref() {
                             let storage = storage.clone();
                             let hash = info_hash.clone();
-                            storage.execute(move |s| {
-                                if let Err(e) = s.update_torrent_sequential(&hash, is_active) {
+                            let obj_weak = obj.downgrade();
+                            glib::spawn_future_local(async move {
+                                let result = storage
+                                    .query(move |s| s.update_torrent_sequential(&hash, is_active))
+                                    .await;
+                                if let Ok(Err(e)) | Err(e) = result {
                                     log::warn!("Failed to update sequential flag in DB: {}", e);
+                                    // The switch already moved; without feedback it
+                                    // would silently revert on restart.
+                                    if let Some(obj) = obj_weak.upgrade() {
+                                        obj.show_toast(&gettext(
+                                            "Could not save the sequential setting",
+                                        ));
+                                    }
                                 }
                             });
                         }
@@ -321,6 +334,14 @@ mod imp {
                 .label(gettext("Contents"))
                 .css_classes(["heading"])
                 .halign(gtk::Align::Start)
+                .build();
+
+            // Empty state: distinguishes "no metadata yet" from a loaded list.
+            let files_empty_lbl = gtk::Label::builder()
+                .label(gettext("File list appears once metadata is downloaded"))
+                .css_classes(["dim-label"])
+                .halign(gtk::Align::Center)
+                .margin_top(24)
                 .build();
 
             let files_store = gio::ListStore::new::<crate::model::FileObject>();
@@ -394,6 +415,7 @@ mod imp {
                 .build();
 
             files_box.append(&files_heading);
+            files_box.append(&files_empty_lbl);
             files_box.append(&files_view_scroll);
 
             view_stack.add_titled_with_icon(
@@ -421,7 +443,7 @@ mod imp {
 
             // Empty placeholder for peers
             let peers_empty = gtk::Label::builder()
-                .label(gettext("No active peers connected."))
+                .label(gettext("No active peers connected"))
                 .css_classes(["dim-label"])
                 .halign(gtk::Align::Center)
                 .margin_top(24)
@@ -458,6 +480,16 @@ mod imp {
                 .css_classes(["boxed-list"])
                 .selection_mode(gtk::SelectionMode::None)
                 .build();
+
+            // Empty placeholder, mirroring the Peers tab.
+            let trackers_empty = gtk::Label::builder()
+                .label(gettext("No trackers found"))
+                .css_classes(["dim-label"])
+                .halign(gtk::Align::Center)
+                .margin_top(24)
+                .build();
+            trackers_list_box.set_placeholder(Some(&trackers_empty));
+
             trackers_group.add(&trackers_list_box);
             trackers_box.append(&trackers_group);
 
@@ -481,6 +513,20 @@ mod imp {
             toast_overlay.set_child(Some(&toolbar_view));
             obj.set_content(Some(&toast_overlay));
 
+            // Escape closes the dialog (read-only view; nothing to lose).
+            let key_controller = gtk::EventControllerKey::new();
+            let obj_weak_esc = obj.downgrade();
+            key_controller.connect_key_pressed(move |_, keyval, _, _| {
+                if keyval == gtk::gdk::Key::Escape {
+                    if let Some(obj) = obj_weak_esc.upgrade() {
+                        obj.close();
+                    }
+                    return glib::Propagation::Stop;
+                }
+                glib::Propagation::Proceed
+            });
+            obj.add_controller(key_controller);
+
             // Store references
             self.title_lbl.replace(Some(title_lbl));
             self.state_lbl.replace(Some(state_lbl));
@@ -495,9 +541,11 @@ mod imp {
             self.save_path_lbl.replace(Some(save_path_lbl));
 
             self.files_store.replace(Some(files_store));
+            self.files_empty_lbl.replace(Some(files_empty_lbl));
             self.peers_list_box.replace(Some(peers_list_box));
             self.trackers_list_box.replace(Some(trackers_list_box));
             self.sequential_switch.replace(Some(sequential_switch));
+            self.toast_overlay.replace(Some(toast_overlay));
         }
     }
 
@@ -586,6 +634,12 @@ impl RillInfoDialog {
         *self.imp().storage.borrow_mut() = Some(storage);
     }
 
+    fn show_toast(&self, message: &str) {
+        if let Some(overlay) = self.imp().toast_overlay.borrow().as_ref() {
+            overlay.add_toast(adw::Toast::new(message));
+        }
+    }
+
     pub fn new(shared_update: Rc<RefCell<Option<UiUpdate>>>, name: &str) -> Self {
         let obj: Self = glib::Object::builder().property("title", name).build();
 
@@ -670,9 +724,9 @@ impl RillInfoDialog {
         self.size_lbl().set_text(&size_text);
 
         self.speed_down_lbl()
-            .set_text(&format!("↓ {}", format_size(update.speed_down)));
+            .set_text(&format!("↓ {}/s", format_size(update.speed_down)));
         self.speed_up_lbl()
-            .set_text(&format!("↑ {}", format_size(update.speed_up)));
+            .set_text(&format!("↑ {}/s", format_size(update.speed_up)));
         self.peers_lbl().set_text(&update.peers.to_string());
 
         // Format ETA
@@ -709,6 +763,9 @@ impl RillInfoDialog {
                     if !files.is_empty() {
                         obj.populate_files_tab(&files);
                         *obj.imp().files_populated.borrow_mut() = true;
+                        if let Some(lbl) = obj.imp().files_empty_lbl.borrow().as_ref() {
+                            lbl.set_visible(false);
+                        }
                     }
                     obj.imp().files_loading.set(false);
                 }
@@ -757,7 +814,7 @@ impl RillInfoDialog {
 
             if peer.speed_down > 0 {
                 let speed_down_badge = gtk::Label::builder()
-                    .label(format!("↓ {}", format_size(peer.speed_down)))
+                    .label(format!("↓ {}/s", format_size(peer.speed_down)))
                     .css_classes(["dim-label", "caption"])
                     .build();
                 right_box.append(&speed_down_badge);
@@ -765,7 +822,7 @@ impl RillInfoDialog {
 
             if peer.speed_up > 0 {
                 let speed_up_badge = gtk::Label::builder()
-                    .label(format!("↑ {}", format_size(peer.speed_up)))
+                    .label(format!("↑ {}/s", format_size(peer.speed_up)))
                     .css_classes(["dim-label", "caption"])
                     .build();
                 right_box.append(&speed_up_badge);
@@ -940,17 +997,24 @@ fn format_eta(downloaded: u64, total: u64, speed_down: u64) -> String {
         return "∞".to_string();
     }
     if downloaded >= total {
-        return "0s".to_string();
+        return gettext("{s}s").replace("{s}", "0");
     }
     let remaining = total - downloaded;
     let eta_secs = remaining / speed_down;
+    // Unit suffixes go through gettext so locales can adapt them.
     if eta_secs < 60 {
-        format!("{}s", eta_secs)
+        gettext("{s}s").replace("{s}", &eta_secs.to_string())
     } else if eta_secs < 3600 {
-        format!("{}m {}s", eta_secs / 60, eta_secs % 60)
+        gettext("{m}m {s}s")
+            .replace("{m}", &(eta_secs / 60).to_string())
+            .replace("{s}", &(eta_secs % 60).to_string())
     } else if eta_secs < 86400 {
-        format!("{}h {}m", eta_secs / 3600, (eta_secs % 3600) / 60)
+        gettext("{h}h {m}m")
+            .replace("{h}", &(eta_secs / 3600).to_string())
+            .replace("{m}", &((eta_secs % 3600) / 60).to_string())
     } else {
-        format!("{}d {}h", eta_secs / 86400, (eta_secs % 86400) / 3600)
+        gettext("{d}d {h}h")
+            .replace("{d}", &(eta_secs / 86400).to_string())
+            .replace("{h}", &((eta_secs % 86400) / 3600).to_string())
     }
 }

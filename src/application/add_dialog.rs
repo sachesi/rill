@@ -25,6 +25,7 @@ mod imp {
         pub cancel_btn: RefCell<Option<gtk::Button>>,
         pub add_btn: RefCell<Option<gtk::Button>>,
         pub url_entry: RefCell<Option<adw::EntryRow>>,
+        pub url_error_label: RefCell<Option<gtk::Label>>,
         pub folder_label: RefCell<Option<gtk::Label>>,
         pub file_row: RefCell<Option<adw::ActionRow>>,
         pub download_folder_row: RefCell<Option<adw::ActionRow>>,
@@ -72,11 +73,21 @@ mod imp {
 
             // URL entry
             let url_entry = adw::EntryRow::builder()
-                .title(gettext("Magnet Link or HTTP URL"))
+                .title(gettext("Magnet Link"))
+                .build();
+
+            // Inline validation error, shown when the Add button is pressed with
+            // text that is not a parseable magnet link.
+            let url_error_label = gtk::Label::builder()
+                .css_classes(["error", "caption"])
+                .halign(gtk::Align::Start)
+                .margin_start(12)
+                .visible(false)
                 .build();
 
             let url_group = adw::PreferencesGroup::builder().build();
             url_group.add(&url_entry);
+            url_group.add(&url_error_label);
 
             // File picker row
             let file_arrow = gtk::Image::builder().icon_name("go-next-symbolic").build();
@@ -142,6 +153,7 @@ mod imp {
             self.cancel_btn.replace(Some(cancel_btn));
             self.add_btn.replace(Some(add_btn));
             self.url_entry.replace(Some(url_entry));
+            self.url_error_label.replace(Some(url_error_label));
             self.folder_label.replace(Some(folder_label));
             self.file_row.replace(Some(file_row));
             self.download_folder_row.replace(Some(download_folder_row));
@@ -174,6 +186,10 @@ impl RillAddDialog {
 
     fn url_entry(&self) -> adw::EntryRow {
         self.imp().url_entry.borrow().clone().unwrap()
+    }
+
+    fn url_error_label(&self) -> gtk::Label {
+        self.imp().url_error_label.borrow().clone().unwrap()
     }
 
     fn folder_label(&self) -> gtk::Label {
@@ -239,7 +255,7 @@ impl RillAddDialog {
     pub fn set_mode(&self, mode: AddMode) {
         match mode {
             AddMode::Magnet => {
-                self.set_title(Some(gettext("Add Torrent Link").as_str()));
+                self.set_title(Some(gettext("Add Magnet Link").as_str()));
                 if let Some(url_group) = self.imp().url_group.borrow().as_ref() {
                     url_group.set_visible(true);
                 }
@@ -276,12 +292,32 @@ impl RillAddDialog {
     }
 
     fn setup_signals(&self) {
-        // URL entry - enable add button on text input
+        // Escape dismisses the dialog like Cancel; the header close buttons are
+        // hidden, so without this the small Cancel button is the only exit.
+        let key_controller = gtk::EventControllerKey::new();
+        let dialog_weak_esc = self.downgrade();
+        key_controller.connect_key_pressed(move |_, keyval, _, _| {
+            if keyval == gtk::gdk::Key::Escape {
+                if let Some(dialog) = dialog_weak_esc.upgrade() {
+                    dialog.close();
+                }
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        self.add_controller(key_controller);
+
+        // URL entry - enable add button on text input, clear stale validation error
         let add_btn_downgrade = self.add_btn().downgrade();
+        let dialog_weak_err = self.downgrade();
         self.url_entry().connect_changed(move |entry| {
             let has_text = !entry.text().is_empty();
             if let Some(btn) = add_btn_downgrade.upgrade() {
                 btn.set_sensitive(has_text);
+            }
+            if let Some(dialog) = dialog_weak_err.upgrade() {
+                dialog.url_error_label().set_visible(false);
+                entry.remove_css_class("error");
             }
         });
 
@@ -335,20 +371,10 @@ impl RillAddDialog {
                     if let Ok(file) = result
                         && let Some(path) = file.path()
                     {
+                        // Per-add destination only. The global default download
+                        // folder is changed in Preferences, never as a side effect
+                        // of picking a folder for one torrent.
                         dialog.folder_label().set_label(&path.to_string_lossy());
-                        if let Some(storage) = dialog.imp().storage.borrow().as_ref() {
-                            let storage = storage.clone();
-                            let folder = path.to_string_lossy().to_string();
-                            glib::spawn_future_local(async move {
-                                if let Ok(mut settings) = storage.query(|s| s.load_settings()).await
-                                {
-                                    settings.download_folder = folder;
-                                    storage.execute(move |s| {
-                                        let _ = s.save_settings(&settings);
-                                    });
-                                }
-                            });
-                        }
                     }
                 },
             );
@@ -390,6 +416,24 @@ impl RillAddDialog {
 
         let start_immediately = self.start_immediately_switch().is_active();
         let sequential = self.sequential_switch().is_active();
+
+        // Validate magnet input before dispatching anything: a string the engine
+        // cannot parse must not close the dialog, let alone show up as a
+        // "Downloading" row. File mode is validated asynchronously below.
+        if self.imp().selected_file.borrow().is_none() {
+            use mtorrent::utils::re_exports::mtorrent_core::input::MagnetLink;
+            use std::str::FromStr;
+
+            let url = self.url_entry().text().trim().to_string();
+            let sanitized = crate::engine::sanitize_magnet_dn(&url);
+            if !url.starts_with("magnet:") || MagnetLink::from_str(&sanitized).is_err() {
+                self.url_entry().add_css_class("error");
+                self.url_error_label()
+                    .set_label(&gettext("Not a valid magnet link"));
+                self.url_error_label().set_visible(true);
+                return;
+            }
+        }
         self.close();
 
         if let Some(file_path) = self.imp().selected_file.borrow().as_ref() {
@@ -420,12 +464,28 @@ impl RillAddDialog {
                 let fp = file_path.clone();
                 let cd = config_dir.clone();
                 let fb_name = fallback_name.clone();
-                let fb_path = file_path.to_string_lossy().to_string();
-                let (name, path_str) = tokio::task::spawn_blocking(move || {
-                    resolve_torrent_file_path(&fp, &cd).unwrap_or((fb_name, fb_path))
+                let (valid, resolved) = tokio::task::spawn_blocking(move || {
+                    use mtorrent::utils::re_exports::mtorrent_core::input::Metainfo;
+                    let valid = Metainfo::from_file(&fp).is_ok();
+                    (valid, resolve_torrent_file_path(&fp, &cd))
                 })
                 .await
-                .unwrap_or_else(|_| (fallback_name, file_path.to_string_lossy().to_string()));
+                .unwrap_or((false, None));
+
+                // A file that does not parse as bencoded metainfo would only
+                // produce a doomed "Downloading" row; reject it up front.
+                if !valid {
+                    if let Some(w) = &window_weak {
+                        w.show_toast(
+                            &gettext("{name} is not a valid torrent file")
+                                .replace("{name}", &fallback_name),
+                        );
+                    }
+                    return;
+                }
+
+                let (name, path_str) =
+                    resolved.unwrap_or_else(|| (fb_name, file_path.to_string_lossy().to_string()));
 
                 let info_hash = if start_immediately {
                     engine_clone
@@ -484,8 +544,9 @@ fn extract_name_from_uri(uri: &str) -> String {
             }
         } else {
             if let Some(start) = uri.find("btih:") {
-                let hash = &uri[start + 5..];
-                let hash = if hash.len() > 12 { &hash[..12] } else { hash };
+                // Truncate by characters, not bytes: a byte slice can panic on a
+                // UTF-8 boundary in pasted garbage.
+                let hash: String = uri[start + 5..].chars().take(12).collect();
                 format!("Magnet {}", hash)
             } else {
                 "Magnet Link".to_string()

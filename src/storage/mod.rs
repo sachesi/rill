@@ -175,6 +175,14 @@ impl Storage {
             .map_err(|e| format!("Failed to delete torrent: {}", e))
     }
 
+    /// Re-key a torrent record to its canonical info hash. Returns whether the
+    /// row was re-keyed (false when the target key already exists).
+    pub fn migrate_torrent_hash(&self, old_hash: &str, new_hash: &str) -> Result<bool, String> {
+        self.db()
+            .migrate_torrent_hash(old_hash, new_hash)
+            .map_err(|e| format!("Failed to migrate torrent hash: {}", e))
+    }
+
     /// Update torrent sequential flag
     pub fn update_torrent_sequential(
         &self,

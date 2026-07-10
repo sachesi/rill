@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: rill\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-02 00:00+0000\n"
+"POT-Creation-Date: 2026-07-10 23:57+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -15,294 +15,539 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-msgid "0 means random port"
-msgstr ""
-
-msgid "0 means unlimited"
-msgstr ""
-
-msgid "Add"
-msgstr ""
-
-msgid "Add Torrent"
-msgstr ""
-
-msgid "Add Torrent File"
-msgstr ""
-
-msgid "Add Torrent Link"
-msgstr ""
-
-msgid "Are you sure you want to delete \"{name}\"? This action cannot be undone."
-msgstr ""
-
-msgid "Are you sure you want to delete {count} selected torrents? This action cannot be undone."
-msgstr ""
-
-msgid "Bandwidth Limits"
-msgstr ""
-
-msgid "BitTorrent client"
-msgstr ""
-
-msgid "Browse for .torrent file"
-msgstr ""
-
+#: src/application/add_dialog.rs:57 src/application/window.rs:239
+#: src/application/window.rs:607 src/application/window.rs:1321
 msgid "Cancel"
 msgstr ""
 
-msgid "Choose Download Folder"
+#: src/application/add_dialog.rs:61
+msgid "Add"
 msgstr ""
 
-msgid "Choose Folder"
+#: src/application/add_dialog.rs:76
+msgid "Magnet Link"
 msgstr ""
 
-msgid "Completed"
+#: src/application/add_dialog.rs:95
+msgid "Browse for .torrent file"
 msgstr ""
 
-msgid "Connected"
-msgstr ""
-
-msgid "Connected Peers"
-msgstr ""
-
-msgid "Connection"
-msgstr ""
-
-msgid "Contents"
-msgstr ""
-
-msgid "Debug"
-msgstr ""
-
-msgid "Delete"
-msgstr ""
-
-msgid "Delete Selected Torrents?"
-msgstr ""
-
-msgid "Delete Torrent?"
-msgstr ""
-
-msgid "Delete downloaded data files"
-msgstr ""
-
-msgid "Details"
-msgstr ""
-
-msgid "Done"
-msgstr ""
-
-msgid "Download Complete"
-msgstr ""
-
+#: src/application/add_dialog.rs:106 src/application/info_dialog.rs:244
+#: src/application/preferences.rs:34
 msgid "Download Folder"
 msgstr ""
 
-msgid "Download Limit (KiB/s)"
-msgstr ""
-
-msgid "Download Speed"
-msgstr ""
-
-msgid "Download from start to finish (sequential)"
-msgstr ""
-
-msgid "Downloading"
-msgstr ""
-
-msgid "Downloads"
-msgstr ""
-
-msgid "Error"
-msgstr ""
-
-msgid "Estimated Time (ETA)"
-msgstr ""
-
-msgid "Files"
-msgstr ""
-
-msgid "General"
-msgstr ""
-
-msgid "Info"
-msgstr ""
-
-msgid "Listening Port"
-msgstr ""
-
-msgid "Log Level"
-msgstr ""
-
-msgid "Log Operations"
-msgstr ""
-
-msgid "Log detailed start/stop/pause/resume events"
-msgstr ""
-
-msgid "Logging"
-msgstr ""
-
-msgid "Magnet Link or HTTP URL"
-msgstr ""
-
-msgid "Main Menu"
-msgstr ""
-
-msgid "Max Downloads"
-msgstr ""
-
-msgid "Max Uploads"
-msgstr ""
-
-msgid "Minimalistic GTK4/Libadwaita BitTorrent client"
-msgstr ""
-
-msgid "Network"
-msgstr ""
-
-msgid "No Torrents"
-msgstr ""
-
-msgid "No active peers connected."
-msgstr ""
-
-msgid "Options"
-msgstr ""
-
-msgid "Overview"
-msgstr ""
-
-msgid "Paused"
-msgstr ""
-
-msgid "Peers"
-msgstr ""
-
-msgid "Peers Count"
-msgstr ""
-
-msgid "Preferences"
-msgstr ""
-
-msgid "Quit"
-msgstr ""
-
-msgid "S_top selected"
-msgstr ""
-
-msgid "Save Folder"
-msgstr ""
-
-msgid "Search Torrents"
-msgstr ""
-
-msgid "Search torrents…"
-msgstr ""
-
-msgid "Seeding Ratio"
-msgstr ""
-
-msgid "Select Torrent File"
-msgstr ""
-
-msgid "Select Torrents"
-msgstr ""
-
-msgid "Select _all"
-msgstr ""
-
-msgid "Show Rill"
-msgstr ""
-
-msgid "Source URI"
-msgstr ""
-
+#: src/application/add_dialog.rs:112
 msgid "Start download immediately"
 msgstr ""
 
-msgid "Storage and Source"
+#: src/application/add_dialog.rs:117 src/application/info_dialog.rs:250
+msgid "Download from start to finish (sequential)"
 msgstr ""
 
-msgid "Torrent {id}"
+#: src/application/add_dialog.rs:122 src/application/info_dialog.rs:301
+msgid "Options"
 msgstr ""
 
-msgid "Trace"
+#: src/application/add_dialog.rs:258
+msgid "Add Magnet Link"
 msgstr ""
 
-msgid "Trackers"
+#: src/application/add_dialog.rs:268
+msgid "Add Torrent File"
 msgstr ""
 
-msgid "Transfer Queue"
+#: src/application/add_dialog.rs:332 src/application/window.rs:856
+msgid "Select Torrent File"
 msgstr ""
 
-msgid "Unknown File"
+#: src/application/add_dialog.rs:358
+msgid "Choose Download Folder"
 msgstr ""
 
-msgid "Upload Limit (KiB/s)"
+#: src/application/add_dialog.rs:432
+msgid "Not a valid magnet link"
 msgstr ""
 
+#: src/application/add_dialog.rs:480
+#, rust-format
+msgid "{name} is not a valid torrent file"
+msgstr ""
+
+#: src/application/info_dialog.rs:175
+msgid "Details"
+msgstr ""
+
+#: src/application/info_dialog.rs:182
+msgid "Download Speed"
+msgstr ""
+
+#: src/application/info_dialog.rs:191
 msgid "Upload Speed"
 msgstr ""
 
-msgid "Warn"
+#: src/application/info_dialog.rs:199 src/application/info_dialog.rs:464
+msgid "Peers"
 msgstr ""
 
-msgid "_About Rill"
+#: src/application/info_dialog.rs:207
+msgid "Time Remaining"
 msgstr ""
 
-msgid "_Add Magnet Link…"
+#: src/application/info_dialog.rs:213
+msgid "Storage and Source"
 msgstr ""
 
-msgid "_Add Torrent File…"
+#: src/application/info_dialog.rs:222
+msgid "Source URI"
 msgstr ""
 
-msgid "_Deselect all"
-msgstr ""
-
-msgid "_Open"
-msgstr ""
-
-msgid "_Pause"
-msgstr ""
-
-msgid "_Preferences"
-msgstr ""
-
-msgid "_Quit"
-msgstr ""
-
-msgid "_Remove"
-msgstr ""
-
-msgid "_Remove selected"
-msgstr ""
-
-msgid "_Resume"
-msgstr ""
-
-msgid "_Select"
-msgstr ""
-
-msgid "_Start selected"
-msgstr ""
-
-msgid "{count} selected"
-msgstr ""
-
-msgid "{downloaded} of {total}"
-msgstr ""
-
-msgid "{downloaded} of {total}{speed} · {peers} peers"
-msgstr ""
-
-msgid "{name} has finished downloading"
-msgstr ""
-
+#: src/application/info_dialog.rs:224
 msgid "Click to copy"
 msgstr ""
 
+#: src/application/info_dialog.rs:233
 msgid "Copied to clipboard"
+msgstr ""
+
+#: src/application/info_dialog.rs:290
+msgid "Could not save the sequential setting"
+msgstr ""
+
+#: src/application/info_dialog.rs:319
+msgid "Overview"
+msgstr ""
+
+#: src/application/info_dialog.rs:334
+msgid "Contents"
+msgstr ""
+
+#: src/application/info_dialog.rs:341
+msgid "File list appears once metadata is downloaded"
+msgstr ""
+
+#: src/application/info_dialog.rs:424
+msgid "Files"
+msgstr ""
+
+#: src/application/info_dialog.rs:436
+msgid "Connected Peers"
+msgstr ""
+
+#: src/application/info_dialog.rs:446
+msgid "No active peers connected"
+msgstr ""
+
+#: src/application/info_dialog.rs:476 src/application/info_dialog.rs:504
+msgid "Trackers"
+msgstr ""
+
+#: src/application/info_dialog.rs:486
+msgid "No trackers found"
+msgstr ""
+
+#: src/application/info_dialog.rs:701 src/application/window.rs:129
+msgid "Downloading"
+msgstr ""
+
+#: src/application/info_dialog.rs:703 src/application/window.rs:144
+msgid "Paused"
+msgstr ""
+
+#: src/application/info_dialog.rs:704 src/application/window.rs:159
+msgid "Completed"
+msgstr ""
+
+#: src/application/info_dialog.rs:705 src/application/preferences.rs:104
+msgid "Error"
+msgstr ""
+
+#: src/application/info_dialog.rs:718
+#, rust-format
+msgid "{downloaded} of {total}"
+msgstr ""
+
+#: src/application/info_dialog.rs:736
+msgid "Done"
+msgstr ""
+
+#: src/application/info_dialog.rs:871
+msgid "Connected"
+msgstr ""
+
+#: src/application/info_dialog.rs:939
+msgid "Unknown File"
+msgstr ""
+
+#: src/application/info_dialog.rs:1000 src/application/info_dialog.rs:1006
+#, rust-format
+msgid "{s}s"
+msgstr ""
+
+#: src/application/info_dialog.rs:1008
+#, rust-format
+msgid "{m}m {s}s"
+msgstr ""
+
+#: src/application/info_dialog.rs:1012
+#, rust-format
+msgid "{h}h {m}m"
+msgstr ""
+
+#: src/application/info_dialog.rs:1016
+#, rust-format
+msgid "{d}d {h}h"
+msgstr ""
+
+#: src/application/preferences.rs:12
+msgid "Preferences"
+msgstr ""
+
+#: src/application/preferences.rs:25
+msgid "General"
+msgstr ""
+
+#: src/application/preferences.rs:30
+msgid "Downloads"
+msgstr ""
+
+#: src/application/preferences.rs:40
+msgid "Choose Folder"
+msgstr ""
+
+#: src/application/preferences.rs:51
+#, rust-format
+msgid "Failed to save download folder: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:95
+msgid "Logging"
+msgstr ""
+
+#: src/application/preferences.rs:100 src/application/preferences.rs:113
+msgid "Log Level"
+msgstr ""
+
+#: src/application/preferences.rs:105
+msgid "Warn"
+msgstr ""
+
+#: src/application/preferences.rs:106
+msgid "Info"
+msgstr ""
+
+#: src/application/preferences.rs:107
+msgid "Debug"
+msgstr ""
+
+#: src/application/preferences.rs:108
+msgid "Trace"
+msgstr ""
+
+#: src/application/preferences.rs:127
+msgid "Log Operations"
+msgstr ""
+
+#: src/application/preferences.rs:131
+msgid "Log detailed start/stop/pause/resume events"
+msgstr ""
+
+#: src/application/preferences.rs:157
+#, rust-format
+msgid "Failed to save log level: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:171
+#, rust-format
+msgid "Failed to save logging options: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:179
+msgid "Network"
+msgstr ""
+
+#: src/application/preferences.rs:184
+msgid "Bandwidth Limits"
+msgstr ""
+
+#: src/application/preferences.rs:196
+msgid "Download Limit (KiB/s)"
+msgstr ""
+
+#: src/application/preferences.rs:200 src/application/preferences.rs:215
+msgid "0 means unlimited"
+msgstr ""
+
+#: src/application/preferences.rs:211
+msgid "Upload Limit (KiB/s)"
+msgstr ""
+
+#: src/application/preferences.rs:222
+msgid "Connection"
+msgstr ""
+
+#: src/application/preferences.rs:227
+msgid "Listening Port"
+msgstr ""
+
+#: src/application/preferences.rs:231
+msgid "0 means random port"
+msgstr ""
+
+#: src/application/preferences.rs:237
+msgid "Transfer Queue"
+msgstr ""
+
+#: src/application/preferences.rs:249
+msgid "Max Downloads"
+msgstr ""
+
+#: src/application/preferences.rs:257
+msgid "Max Uploads"
+msgstr ""
+
+#: src/application/preferences.rs:264
+msgid "Seeding Ratio"
+msgstr ""
+
+#: src/application/preferences.rs:286
+#, rust-format
+msgid "Failed to save port: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:298
+#, rust-format
+msgid "Failed to save download limit: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:311
+#, rust-format
+msgid "Failed to save upload limit: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:324
+#, rust-format
+msgid "Failed to save max downloads: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:337
+#, rust-format
+msgid "Failed to save max uploads: {error}"
+msgstr ""
+
+#: src/application/preferences.rs:349
+#, rust-format
+msgid "Failed to save seeding ratio: {error}"
+msgstr ""
+
+#: src/application/torrent_row.rs:332
+msgid "Pause"
+msgstr ""
+
+#: src/application/torrent_row.rs:346
+msgid "Resume"
+msgstr ""
+
+#: src/application/torrent_row.rs:360 src/application/torrent_row.rs:371
+#: src/application/window.rs:608 src/application/window.rs:1322
+msgid "Delete"
+msgstr ""
+
+#: src/application/torrent_row.rs:382
+#, rust-format
+msgid "Torrent {id}"
+msgstr ""
+
+#: src/application/torrent_row.rs:393
+#, rust-format
+msgid "{n} peer"
+msgid_plural "{n} peers"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/application/torrent_row.rs:395
+#, rust-format
+msgid "{downloaded} of {total}{speed} · {peers}"
+msgstr ""
+
+#: src/application/torrent_row.rs:444
+msgid "Select _All"
+msgstr ""
+
+#: src/application/torrent_row.rs:448
+msgid "_Deselect All"
+msgstr ""
+
+#: src/application/torrent_row.rs:452
+msgid "_Resume Selected"
+msgstr ""
+
+#: src/application/torrent_row.rs:456
+msgid "_Pause Selected"
+msgstr ""
+
+#: src/application/torrent_row.rs:460
+msgid "De_lete Selected"
+msgstr ""
+
+#: src/application/torrent_row.rs:564
+msgid "_Pause"
+msgstr ""
+
+#: src/application/torrent_row.rs:567
+msgid "_Resume"
+msgstr ""
+
+#: src/application/torrent_row.rs:572
+msgid "_Retry"
+msgstr ""
+
+#: src/application/torrent_row.rs:577
+msgid "_Open"
+msgstr ""
+
+#: src/application/torrent_row.rs:579
+msgid "_Select"
+msgstr ""
+
+#: src/application/torrent_row.rs:580
+msgid "_Delete"
+msgstr ""
+
+#: src/application/torrent_row.rs:687
+#, rust-format
+msgid "Could not open folder: {error}"
+msgstr ""
+
+#: src/application/tray.rs:35
+msgid "BitTorrent client"
+msgstr ""
+
+#: src/application/tray.rs:50
+msgid "Show Rill"
+msgstr ""
+
+#: src/application/tray.rs:60
+msgid "Quit"
+msgstr ""
+
+#: src/application/window.rs:122
+msgid "No Torrents"
+msgstr ""
+
+#: src/application/window.rs:123
+msgid "Add a magnet link or .torrent file to get started"
+msgstr ""
+
+#: src/application/window.rs:251
+msgid "Search torrents…"
+msgstr ""
+
+#: src/application/window.rs:261
+msgid "Search Torrents"
+msgstr ""
+
+#: src/application/window.rs:282
+msgid "_Add Torrent File…"
+msgstr ""
+
+#: src/application/window.rs:286
+msgid "_Add Magnet Link…"
+msgstr ""
+
+#: src/application/window.rs:292
+msgid "Add Torrent"
+msgstr ""
+
+#: src/application/window.rs:300
+msgid "_Preferences"
+msgstr ""
+
+#: src/application/window.rs:305
+msgid "_About Rill"
+msgstr ""
+
+#: src/application/window.rs:306
+msgid "_Quit"
+msgstr ""
+
+#: src/application/window.rs:313
+msgid "Main Menu"
+msgstr ""
+
+#: src/application/window.rs:590 src/application/window.rs:1308
+msgid "Delete downloaded data files"
+msgstr ""
+
+#: src/application/window.rs:597
+msgid "Delete Torrent?"
+msgstr ""
+
+#: src/application/window.rs:600
+#, rust-format
+msgid ""
+"Are you sure you want to delete \"{name}\"? This action cannot be undone."
+msgstr ""
+
+#: src/application/window.rs:702
+#, rust-format
+msgid "Failed to delete data: {error}"
+msgstr ""
+
+#: src/application/window.rs:715
+msgid "Could not resolve torrent data path"
+msgstr ""
+
+#: src/application/window.rs:723
+msgid "Could not locate torrent data to delete"
+msgstr ""
+
+#: src/application/window.rs:784
+msgid "Rill is still running"
+msgstr ""
+
+#: src/application/window.rs:786
+msgid ""
+"Downloads continue in the background. Use the tray icon to reopen or quit."
+msgstr ""
+
+#: src/application/window.rs:921
+#, rust-format
+msgid "Download failed: {error}"
+msgstr ""
+
+#: src/application/window.rs:967
+msgid "Download Complete"
+msgstr ""
+
+#: src/application/window.rs:969
+#, rust-format
+msgid "{name} has finished downloading"
+msgstr ""
+
+#: src/application/window.rs:1071
+#, rust-format
+msgid "Could not save torrent: {error}"
+msgstr ""
+
+#: src/application/window.rs:1208
+msgid "Select Torrents"
+msgstr ""
+
+#: src/application/window.rs:1209
+#, rust-format
+msgid "{count} selected"
+msgstr ""
+
+#: src/application/window.rs:1316
+msgid "Delete Selected Torrents?"
+msgstr ""
+
+#: src/application/window.rs:1317
+#, rust-format
+msgid ""
+"Are you sure you want to delete {count} selected torrents? This action "
+"cannot be undone."
 msgstr ""

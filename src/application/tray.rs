@@ -69,6 +69,15 @@ impl Tray for RillTray {
     }
 }
 
+/// Whether the tray registered with a StatusNotifier host. The window's
+/// close-to-tray behaviour checks this: hiding without a tray would leave the
+/// app running with no visible way back.
+static TRAY_AVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn is_available() -> bool {
+    TRAY_AVAILABLE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Spawn the system tray on its own thread. Returns a receiver to be drained on
 /// the GTK main thread. If no StatusNotifier host is available the tray simply
 /// stays hidden; the window can still be restored by relaunching the app.
@@ -79,7 +88,10 @@ pub fn spawn() -> Receiver<TrayCommand> {
     match (RillTray { tx }).spawn() {
         // Keep the handle alive for the whole process so the tray's background
         // service loop is not torn down when the handle is dropped.
-        Ok(handle) => std::mem::forget(handle),
+        Ok(handle) => {
+            TRAY_AVAILABLE.store(true, std::sync::atomic::Ordering::Relaxed);
+            std::mem::forget(handle);
+        }
         Err(e) => log::warn!("System tray unavailable: {}", e),
     }
     rx

@@ -173,7 +173,7 @@ impl RillApplication {
             move |_, _| {
                 let about = adw::AboutWindow::builder()
                     .application_name("Rill")
-                    .version("0.1.9")
+                    .version(env!("CARGO_PKG_VERSION"))
                     .developer_name("sachesi")
                     .license_type(gtk::License::MitX11)
                     .comments(gettext("Minimalistic GTK4/Libadwaita BitTorrent client"))
@@ -203,20 +203,10 @@ impl RillApplication {
         self.app
             .set_accels_for_action("app.preferences", &["<Control>comma"]);
 
-        // Add torrent action
-        let add_action = gio::SimpleAction::new("add-torrent", None);
-        let app_weak = self.app.downgrade();
-        add_action.connect_activate(move |_, _| {
-            if let Some(app) = app_weak.upgrade()
-                && let Some(window) = app.active_window()
-                && let Ok(rill_window) = window.downcast::<RillWindow>()
-            {
-                rill_window.show_add_dialog();
-            }
-        });
-        self.app.add_action(&add_action);
+        // Ctrl+N triggers the same "Add Magnet Link…" action the "+" menu shows,
+        // instead of an invisible app-level duplicate of it.
         self.app
-            .set_accels_for_action("app.add-torrent", &["<Control>n"]);
+            .set_accels_for_action("win.add-magnet", &["<Control>n"]);
     }
 
     fn setup_tray(&self) {

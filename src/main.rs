@@ -163,10 +163,37 @@ fn main() {
     )));
 
     // Load saved torrents
-    let saved_torrents = storage.load_torrents().unwrap_or_else(|e| {
+    let mut saved_torrents = storage.load_torrents().unwrap_or_else(|e| {
         log::warn!("Failed to load torrents: {}", e);
         Vec::new()
     });
+
+    // Records saved before canonical info-hash identities were keyed by a hash
+    // of the URI text. Re-key them so the engine (which now derives identity
+    // from the real info hash) finds the same rows. A record whose canonical
+    // key is already taken stays on its legacy key rather than clobbering.
+    for torrent in &mut saved_torrents {
+        let canonical = engine::torrent_id(&torrent.uri);
+        if canonical != torrent.info_hash {
+            match storage.migrate_torrent_hash(&torrent.info_hash, &canonical) {
+                Ok(true) => {
+                    log::info!(
+                        "Migrated torrent id {} -> {} ({})",
+                        torrent.info_hash,
+                        canonical,
+                        torrent.name
+                    );
+                    torrent.info_hash = canonical;
+                }
+                Ok(false) => log::warn!(
+                    "Torrent {} keeps legacy id {}; canonical id already in use",
+                    torrent.name,
+                    torrent.info_hash
+                ),
+                Err(e) => log::warn!("Failed to migrate id for {}: {}", torrent.name, e),
+            }
+        }
+    }
     log::info!(
         "Loaded {} saved torrents from database",
         saved_torrents.len()

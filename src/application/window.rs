@@ -82,6 +82,17 @@ mod imp {
         pub deleted_torrents: RefCell<std::collections::HashSet<String>>,
         pub selection_mode: RefCell<bool>,
         pub selected_hashes: RefCell<std::collections::HashSet<String>>,
+        /// Torrents the user paused explicitly. The queue-limit pass must never
+        /// auto-resume these; the set bridges the gap until the async DB write
+        /// lands and outlives it for the session.
+        pub user_paused: RefCell<std::collections::HashSet<String>>,
+        /// Torrents paused by the queue-limit pass (not by the user). Persisted
+        /// as "downloading" so they auto-resume when capacity frees up, including
+        /// after a restart.
+        pub auto_paused: RefCell<std::collections::HashSet<String>>,
+        /// Whether the "still running in background" notice was already shown
+        /// this session (first hide-to-tray only).
+        pub hide_notice_shown: std::cell::Cell<bool>,
         pub cancel_btn: RefCell<Option<gtk::Button>>,
         pub window_title: RefCell<Option<adw::WindowTitle>>,
         /// Source ID of the 100ms UiEvent drain loop, kept for explicit ownership
@@ -109,7 +120,7 @@ mod imp {
             let empty_page = adw::StatusPage::builder()
                 .icon_name("folder-download-symbolic")
                 .title(gettext("No Torrents"))
-                .description("Add a magnet link or .torrent file to get started")
+                .description(gettext("Add a magnet link or .torrent file to get started"))
                 .vexpand(true)
                 .hexpand(true)
                 .build();
@@ -486,18 +497,16 @@ impl RillWindow {
                 return glib::Propagation::Proceed;
             }
 
-            if let Some(ref name) = keyval.name() {
-                match &**name as &str {
-                    "Delete" => {
-                        window.delete_selected();
-                        return glib::Propagation::Stop;
-                    }
-                    "space" => {
-                        window.toggle_selected();
-                        return glib::Propagation::Stop;
-                    }
-                    _ => {}
-                }
+            // Delete removes the checked torrents while selection mode is active.
+            // Outside selection mode the lists use SelectionMode::None (no focused
+            // "current row" exists), so the key falls through to GTK.
+            if let Some(ref name) = keyval.name()
+                && &**name == "Delete"
+                && window.is_selection_mode()
+                && !window.imp().selected_hashes.borrow().is_empty()
+            {
+                window.remove_selected_torrents();
+                return glib::Propagation::Stop;
             }
 
             glib::Propagation::Proceed
@@ -546,33 +555,21 @@ impl RillWindow {
         self.update_section_visibility();
     }
 
-    fn selected_row(&self) -> Option<RillRow> {
-        for list in [self.dl_list(), self.pause_list(), self.done_list()] {
-            if let Some(row) = list.selected_row()
-                && let Ok(rill_row) = row.downcast::<RillRow>()
-            {
-                return Some(rill_row);
-            }
-        }
-        None
+    /// Records that the user explicitly paused this torrent, so the queue-limit
+    /// pass will not auto-resume it.
+    pub fn note_user_pause(&self, info_hash: &str) {
+        self.imp()
+            .user_paused
+            .borrow_mut()
+            .insert(info_hash.to_string());
+        self.imp().auto_paused.borrow_mut().remove(info_hash);
     }
 
-    fn toggle_selected(&self) {
-        if let Some(row) = self.selected_row() {
-            let state = row.state();
-            if matches!(state, TorrentUiState::Downloading | TorrentUiState::Paused)
-                && let Some(engine) = self.imp().engine.borrow().as_ref()
-            {
-                engine.borrow().toggle(&row.info_hash());
-                self.enforce_queue_limits();
-            }
-        }
-    }
-
-    fn delete_selected(&self) {
-        if let Some(row) = self.selected_row() {
-            self.delete_torrent(&row.info_hash());
-        }
+    /// Records that the user explicitly resumed this torrent, clearing any pause
+    /// intent so queue bookkeeping starts fresh.
+    pub fn note_user_resume(&self, info_hash: &str) {
+        self.imp().user_paused.borrow_mut().remove(info_hash);
+        self.imp().auto_paused.borrow_mut().remove(info_hash);
     }
 
     pub fn allow_torrent(&self, info_hash: &str) {
@@ -633,6 +630,14 @@ impl RillWindow {
             .deleted_torrents
             .borrow_mut()
             .insert(info_hash.to_string());
+        self.imp().user_paused.borrow_mut().remove(info_hash);
+        self.imp().auto_paused.borrow_mut().remove(info_hash);
+
+        // Close a still-open info dialog for this torrent; it polls a snapshot
+        // that will never update again and would freeze at the deletion moment.
+        if let Some(dialog) = self.imp().info_dialogs.borrow_mut().remove(info_hash) {
+            dialog.close();
+        }
 
         if let Some(engine) = self.imp().engine.borrow().as_ref() {
             engine.borrow().stop(info_hash);
@@ -693,7 +698,10 @@ impl RillWindow {
                                     e
                                 );
                                 if let Some(window) = window_weak.upgrade() {
-                                    window.show_toast(&format!("Failed to delete data: {}", e));
+                                    window.show_toast(
+                                        &gettext("Failed to delete data: {error}")
+                                            .replace("{error}", &e.to_string()),
+                                    );
                                 }
                             }
                             Err(e) => log::warn!("Delete task failed: {}", e),
@@ -706,6 +714,13 @@ impl RillWindow {
                         if let Some(window) = window_weak.upgrade() {
                             window.show_toast(&gettext("Could not resolve torrent data path"));
                         }
+                    }
+                } else {
+                    // The confirmation dialog promised file deletion; never skip it
+                    // silently when the record cannot be read back.
+                    log::warn!("Could not load torrent {} to delete its data", hash);
+                    if let Some(window) = window_weak.upgrade() {
+                        window.show_toast(&gettext("Could not locate torrent data to delete"));
                     }
                 }
             }
@@ -723,6 +738,7 @@ impl RillWindow {
     fn setup_window_state_handlers(&self) {
         let storage = self.imp().storage.borrow().clone();
         self.connect_close_request(move |window| {
+            let tray_available = super::tray::is_available();
             if let Some(storage) = storage.as_ref() {
                 let (width, height) = window.default_size();
                 let maximized = window.is_maximized();
@@ -748,8 +764,30 @@ impl RillWindow {
                 });
             }
 
+            // Without a StatusNotifier host there is no way back to a hidden
+            // window, so closing quits outright (shutdown pauses all torrents).
+            if !tray_available {
+                if let Some(app) = window.application() {
+                    app.quit();
+                }
+                return glib::Propagation::Stop;
+            }
+
             // Hide to the system tray instead of quitting; torrents keep running.
             // The app stays alive via the hold guard and is reopened from the tray.
+            // Disclose the behaviour once per session, since the window vanishing
+            // with downloads active is otherwise indistinguishable from quitting.
+            if !window.imp().hide_notice_shown.get() {
+                window.imp().hide_notice_shown.set(true);
+                if let Some(app) = window.application() {
+                    let notification =
+                        gio::Notification::new(&gettext("Rill is still running"));
+                    notification.set_body(Some(&gettext(
+                        "Downloads continue in the background. Use the tray icon to reopen or quit.",
+                    )));
+                    app.send_notification(Some("background-notice"), &notification);
+                }
+            }
             window.set_visible(false);
             glib::Propagation::Stop
         });
@@ -768,6 +806,10 @@ impl RillWindow {
             let uris: String = value.get().unwrap_or_default();
             if let Some(path) = uris.lines().next() {
                 let path = path.trim();
+                if path.starts_with("magnet:") {
+                    window.show_add_dialog_with_uri(path);
+                    return true;
+                }
                 let path = path.strip_prefix("file://").unwrap_or(path);
                 let path = PathBuf::from(path);
                 if let Some(ext) = path.extension()
@@ -850,10 +892,59 @@ impl RillWindow {
                                         info_hash,
                                         err
                                     );
-                                    window.show_toast(&format!("Error: {}", err));
+                                    // Reflect the failure in the row itself (persisted
+                                    // as Error) instead of leaving it frozen in
+                                    // "Downloading" after the toast disappears, and
+                                    // move the engine entry to the saved map so
+                                    // resume can retry it.
+                                    if let Some(engine) = window.imp().engine.borrow().as_ref() {
+                                        engine.borrow().mark_failed(&info_hash);
+                                    }
+                                    let errored =
+                                        window.imp().rows.borrow().get(&info_hash).and_then(
+                                            |row| {
+                                                row.imp().latest_update.borrow().as_ref().map(|u| {
+                                                    let mut u = u.clone();
+                                                    u.state = TorrentUiState::Error;
+                                                    u.peers = 0;
+                                                    u.speed_down = 0;
+                                                    u.speed_up = 0;
+                                                    u.peers_list = Vec::new();
+                                                    u
+                                                })
+                                            },
+                                        );
+                                    if let Some(update) = errored {
+                                        window.process_update(&update);
+                                    }
+                                    window.show_toast(
+                                        &gettext("Download failed: {error}")
+                                            .replace("{error}", &err),
+                                    );
                                 }
                             }
                             None => {
+                                // A finished task may exit before its listener emits a
+                                // final Completed snapshot (e.g. zero-byte torrents
+                                // never satisfy `downloaded >= total && total > 0`).
+                                // Flip the row here so it cannot stay "Downloading".
+                                let completed =
+                                    window.imp().rows.borrow().get(&info_hash).and_then(|row| {
+                                        row.imp().latest_update.borrow().as_ref().and_then(|u| {
+                                            (u.state != TorrentUiState::Completed).then(|| {
+                                                let mut u = u.clone();
+                                                u.state = TorrentUiState::Completed;
+                                                u.peers = 0;
+                                                u.speed_down = 0;
+                                                u.speed_up = 0;
+                                                u.peers_list = Vec::new();
+                                                u
+                                            })
+                                        })
+                                    });
+                                if let Some(update) = completed {
+                                    window.process_update(&update);
+                                }
                                 if let Some(storage) = window.imp().storage.borrow().as_ref() {
                                     let hash = info_hash.clone();
                                     storage.execute(move |s| {
@@ -976,7 +1067,9 @@ impl RillWindow {
                     if let Some(model) = self.imp().model.borrow().as_ref() {
                         model.borrow_mut().remove_torrent(&final_update.info_hash);
                     }
-                    self.show_toast(&format!("Could not save torrent: {}", e));
+                    self.show_toast(
+                        &gettext("Could not save torrent: {error}").replace("{error}", &e),
+                    );
                     return;
                 }
             }
@@ -987,6 +1080,16 @@ impl RillWindow {
                 let new_row =
                     RillRow::new(final_update.info_hash.clone(), engine.clone(), tx.clone());
                 new_row.update(&final_update);
+
+                // Honour an active search filter: a row inserted mid-search must
+                // not appear until it matches the query.
+                let query = self.search_entry().text().to_lowercase();
+                if !query.is_empty() {
+                    let matches = new_row.name().to_lowercase().contains(&query)
+                        || final_update.info_hash.contains(&query);
+                    new_row.set_visible(matches);
+                }
+
                 rows.insert(final_update.info_hash.clone(), new_row.clone());
 
                 let target_list = list_for_state(final_update.state, self);
@@ -1136,6 +1239,7 @@ impl RillWindow {
                 if let Some(row) = rows.get(&hash) {
                     let state = row.state();
                     if state == TorrentUiState::Paused {
+                        self.note_user_resume(&hash);
                         row.update_ui_state(TorrentUiState::Downloading);
                         if let Some(tx) = row.imp().tx.borrow().as_ref()
                             && let Some(prev) = row.imp().latest_update.borrow().as_ref()
@@ -1168,6 +1272,7 @@ impl RillWindow {
                 if let Some(row) = rows.get(&hash) {
                     let state = row.state();
                     if state == TorrentUiState::Downloading {
+                        self.note_user_pause(&hash);
                         row.update_ui_state(TorrentUiState::Paused);
                         if let Some(tx) = row.imp().tx.borrow().as_ref()
                             && let Some(prev) = row.imp().latest_update.borrow().as_ref()
@@ -1282,17 +1387,6 @@ impl RillWindow {
         }
     }
 
-    pub fn show_add_dialog(&self) {
-        let engine = self.imp().engine.borrow();
-        let tx = self.imp().tx.borrow();
-        let storage = self.imp().storage.borrow();
-        if let (Some(engine), Some(tx), Some(storage)) =
-            (engine.as_ref(), tx.as_ref(), storage.as_ref())
-        {
-            show_add_dialog(self, engine.clone(), tx.clone(), storage.clone());
-        }
-    }
-
     pub fn show_add_dialog_with_uri(&self, uri: &str) {
         let engine = self.imp().engine.borrow();
         let tx = self.imp().tx.borrow();
@@ -1393,6 +1487,14 @@ impl RillWindow {
         if let Some(storage) = self.imp().storage.borrow().as_ref() {
             let state_str = match update.state {
                 TorrentUiState::Downloading => "downloading",
+                // A queue-limit pause is not a user decision: persist it as
+                // "downloading" so the torrent resumes when capacity frees up,
+                // including after a restart. Only user pauses persist as "paused".
+                TorrentUiState::Paused
+                    if self.imp().auto_paused.borrow().contains(&update.info_hash) =>
+                {
+                    "downloading"
+                }
                 TorrentUiState::Paused => "paused",
                 TorrentUiState::Completed => "completed",
                 TorrentUiState::Error => "error",
@@ -1510,6 +1612,8 @@ impl RillWindow {
             None => return,
         };
 
+        let user_paused = self.imp().user_paused.borrow();
+        let auto_paused = self.imp().auto_paused.borrow();
         for info_hash in rows.keys() {
             let db_state = state_map.get(info_hash).cloned().unwrap_or_default();
             if db_state == "completed" {
@@ -1518,11 +1622,19 @@ impl RillWindow {
 
             if engine.borrow().is_active(info_hash) {
                 active_downloads += 1;
-            } else if db_state == "paused" || db_state == "downloading" {
+            } else if !user_paused.contains(info_hash)
+                && (db_state == "downloading" || auto_paused.contains(info_hash))
+            {
+                // Resume-eligible: the torrent should be running ("downloading" in
+                // the DB, or paused earlier by this pass). A DB state of "paused"
+                // is a user decision and is never overridden; `user_paused` covers
+                // the window before the async state write lands.
                 let added_at = added_at_map.get(info_hash).cloned().unwrap_or(0);
                 queued_torrents.push((info_hash.clone(), added_at));
             }
         }
+        drop(user_paused);
+        drop(auto_paused);
 
         queued_torrents.sort_by_key(|&(_, added_at)| added_at);
 
@@ -1549,6 +1661,10 @@ impl RillWindow {
             );
             for (info_hash, _) in downloading_with_time.iter().take(excess) {
                 log::info!("Auto-pausing torrent: {}", info_hash);
+                self.imp()
+                    .auto_paused
+                    .borrow_mut()
+                    .insert(info_hash.clone());
                 engine.borrow().toggle(info_hash);
             }
         } else if active_downloads < max_dl && !queued_torrents.is_empty() {
@@ -1562,6 +1678,7 @@ impl RillWindow {
             );
             for (info_hash, _) in queued_torrents.iter().take(to_resume) {
                 log::info!("Auto-resuming torrent: {}", info_hash);
+                self.imp().auto_paused.borrow_mut().remove(info_hash);
                 engine.borrow().toggle(info_hash);
             }
         }
@@ -1601,7 +1718,7 @@ fn torrent_data_path(uri: &str, output_dir: &Path) -> Option<PathBuf> {
         .and_then(|stem| contained_torrent_path(output_dir, stem))
 }
 
-fn contained_torrent_path(output_dir: &Path, name: &str) -> Option<PathBuf> {
+pub(crate) fn contained_torrent_path(output_dir: &Path, name: &str) -> Option<PathBuf> {
     if name.is_empty() || name.contains('\\') || name.contains('\0') {
         return None;
     }

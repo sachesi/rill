@@ -293,6 +293,18 @@ impl Database {
         Ok(())
     }
 
+    /// Re-key a torrent record whose stored identity predates canonical
+    /// info-hash IDs. `OR IGNORE` leaves the row untouched when the new key
+    /// already exists (two legacy records for the same content); returns whether
+    /// the row was actually re-keyed.
+    pub fn migrate_torrent_hash(&self, old_hash: &str, new_hash: &str) -> SqlResult<bool> {
+        let changed = self.conn.execute(
+            "UPDATE OR IGNORE torrents SET info_hash = ?1 WHERE info_hash = ?2",
+            rusqlite::params![new_hash, old_hash],
+        )?;
+        Ok(changed > 0)
+    }
+
     /// Delete a torrent
     pub fn delete_torrent(&self, info_hash: &str) -> SqlResult<()> {
         log::info!("Deleting torrent from database: {}", info_hash);

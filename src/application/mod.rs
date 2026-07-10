@@ -11,3 +11,4 @@ pub use app::RillApplication;
 pub use info_dialog::RillInfoDialog;
 pub use preferences::show_preferences;
 pub use window::RillWindow;
+pub(crate) use window::contained_torrent_path;

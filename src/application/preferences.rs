@@ -46,6 +46,9 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
     let storage_clone = storage.clone();
     let download_row_weak = download_row.downgrade();
     let parent_clone1 = parent.clone();
+    // Resolved outside the nested closure: xgettext does not descend that deep
+    // inside the clone! macro, so the string would be missed at extraction.
+    let folder_error_template = gettext("Failed to save download folder: {error}");
     folder_btn.connect_clicked(glib::clone!(
         #[weak]
         prefs,
@@ -58,6 +61,7 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
             let storage_clone2 = storage_clone.clone();
             let download_row_weak2 = download_row_weak.clone();
             let parent_clone1 = parent_clone1.clone();
+            let folder_error_template = folder_error_template.clone();
             dialog.select_folder(Some(&prefs), gtk::gio::Cancellable::NONE, move |result| {
                 if let Ok(file) = result
                     && let Some(path) = file.path()
@@ -72,7 +76,7 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
                     settings.download_folder = path.to_string_lossy().to_string();
                     if let Err(e) = storage_clone2.save_settings(&settings) {
                         log::warn!("Failed to save settings: {}", e);
-                        parent_clone1.show_toast(&format!("Failed to save download folder: {}", e));
+                        parent_clone1.show_toast(&folder_error_template.replace("{error}", &e));
                     } else {
                         log::info!("Download folder updated: {}", path.display());
                     }
@@ -149,7 +153,8 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.log_level = level_str;
         if let Err(e) = storage1.save_settings(&settings) {
             log::warn!("Failed to save log level: {}", e);
-            parent_clone2.show_toast(&format!("Failed to save log level: {}", e));
+            parent_clone2
+                .show_toast(&gettext("Failed to save log level: {error}").replace("{error}", &e));
         }
         logging::apply_settings(&settings);
     });
@@ -162,7 +167,9 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.log_torrent_ops = sw.is_active();
         if let Err(e) = storage2.save_settings(&settings) {
             log::warn!("Failed to save log torrent ops: {}", e);
-            parent_clone3.show_toast(&format!("Failed to save log torrent ops: {}", e));
+            parent_clone3.show_toast(
+                &gettext("Failed to save logging options: {error}").replace("{error}", &e),
+            );
         }
         logging::TORRENT_OPS_ENABLED.store(sw.is_active(), Ordering::Relaxed);
     });
@@ -275,7 +282,8 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.pwp_port = adj.value() as u16;
         if let Err(e) = storage_port.save_settings(&settings) {
             log::warn!("Failed to save peer listening port: {}", e);
-            parent_clone_port.show_toast(&format!("Failed to save port: {}", e));
+            parent_clone_port
+                .show_toast(&gettext("Failed to save port: {error}").replace("{error}", &e));
         }
     });
 
@@ -286,7 +294,9 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.global_download_limit = adj.value() as i32;
         if let Err(e) = storage_dl.save_settings(&settings) {
             log::warn!("Failed to save global download limit: {}", e);
-            parent_clone4.show_toast(&format!("Failed to save download limit: {}", e));
+            parent_clone4.show_toast(
+                &gettext("Failed to save download limit: {error}").replace("{error}", &e),
+            );
         }
     });
 
@@ -297,7 +307,9 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.global_upload_limit = adj.value() as i32;
         if let Err(e) = storage_ul.save_settings(&settings) {
             log::warn!("Failed to save global upload limit: {}", e);
-            parent_clone5.show_toast(&format!("Failed to save upload limit: {}", e));
+            parent_clone5.show_toast(
+                &gettext("Failed to save upload limit: {error}").replace("{error}", &e),
+            );
         }
     });
 
@@ -308,7 +320,9 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.max_active_downloads = adj.value() as i32;
         if let Err(e) = storage_max_dl.save_settings(&settings) {
             log::warn!("Failed to save max active downloads: {}", e);
-            parent_clone6.show_toast(&format!("Failed to save max downloads: {}", e));
+            parent_clone6.show_toast(
+                &gettext("Failed to save max downloads: {error}").replace("{error}", &e),
+            );
         }
     });
 
@@ -319,7 +333,8 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.max_active_uploads = adj.value() as i32;
         if let Err(e) = storage_max_ul.save_settings(&settings) {
             log::warn!("Failed to save max active uploads: {}", e);
-            parent_clone7.show_toast(&format!("Failed to save max uploads: {}", e));
+            parent_clone7
+                .show_toast(&gettext("Failed to save max uploads: {error}").replace("{error}", &e));
         }
     });
 
@@ -330,7 +345,9 @@ pub fn show_preferences(parent: &crate::application::RillWindow, storage: Storag
         settings.seeding_ratio_limit = adj.value();
         if let Err(e) = storage_ratio.save_settings(&settings) {
             log::warn!("Failed to save seeding ratio limit: {}", e);
-            parent_clone8.show_toast(&format!("Failed to save ratio limit: {}", e));
+            parent_clone8.show_toast(
+                &gettext("Failed to save seeding ratio: {error}").replace("{error}", &e),
+            );
         }
     });
 
