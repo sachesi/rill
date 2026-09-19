@@ -71,3 +71,13 @@ jobs:
     uses: ./.github/workflows/copr.yml
     # A called workflow sees no secrets unless the caller passes them on.
     secrets: inherit
+
+  obs:
+    name: OBS
+    # After the release, whose files the build downloads.
+    needs: release
+    uses: ./.github/workflows/obs.yml
+    permissions:
+      contents: write
+    # A called workflow sees no secrets unless the caller passes them on.
+    secrets: inherit
