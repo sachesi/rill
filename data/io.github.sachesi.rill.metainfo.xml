@@ -57,6 +57,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.3.1" date="2026-09-19">
+      <description>
+        <p>Rill now uses mtorrent 0.6.1, which closes a torrent's uTP connections before the torrent stops. A torrent that is paused and resumed, or switched to downloading in order, keeps its port instead of moving to another one, and its peers learn at once that the connection has ended. A tracker that was already removed and a message a peer sends that mtorrent does not know are no longer reported as errors.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-09-16">
       <description>
         <p>Torrents pick up where they left off after Rill restarts. The list can be ordered by name, size or progress, every torrent can be paused or resumed at once, a torrent's magnet link can be copied, and its download folder can be changed after it was added, moving the files that are already there. Rill warns when a torrent needs more room than its folder has.</p>
