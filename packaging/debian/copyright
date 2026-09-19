@@ -1,0 +1,15 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: rill
+Upstream-Contact: sachesi <xsachesi@pm.me>
+Source: https://github.com/sachesi/rill
+
+Files: *
+Copyright: sachesi <xsachesi@pm.me>
+License: GPL-3.0-or-later AND Apache-2.0
+ See the LICENSE file in the source; on Debian systems, the GNU General Public
+ License is in /usr/share/common-licenses.
+
+Files: vendor/*
+Copyright: The authors of each crate, as listed in its Cargo.toml
+License: various
+ Each vendored crate carries its own license, in its directory under vendor/.

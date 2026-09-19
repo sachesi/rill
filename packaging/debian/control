@@ -1,0 +1,33 @@
+Source: rill
+Section: net
+Priority: optional
+Maintainer: sachesi <xsachesi@pm.me>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.95),
+               pkg-config,
+               just,
+               blueprint-compiler,
+               gettext,
+               libglib2.0-dev,
+               libxkbcommon-dev,
+               libgtk-4-dev (>= 4.20),
+               libadwaita-1-dev (>= 1.8)
+Standards-Version: 4.7.2
+Homepage: https://github.com/sachesi/rill
+Rules-Requires-Root: no
+
+Package: rill
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libgtk-4-1 (>= 4.20),
+         libadwaita-1-0 (>= 1.8),
+         hicolor-icon-theme
+Description: Small BitTorrent client
+ Rill is a small BitTorrent client, built with GTK 4 and libadwaita on top of
+ mtorrent. It adds magnet links and .torrent files, groups transfers into
+ downloading, paused and finished with a limit on how many download at once,
+ shows each torrent's pieces, files, peers and trackers, and can download a
+ torrent sequentially. On desktops with a system tray the transfers go on after
+ the window is closed.
