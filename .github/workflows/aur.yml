@@ -1,8 +1,9 @@
 name: AUR
 
 # A release tag updates the rill-torrent package on the AUR from
-# packaging/aur/PKGBUILD, once CI has passed (ci.yml calls this). Run by hand, it builds
-# the given version and pushes it only when asked to.
+# packaging/aur/PKGBUILD, once CI has passed (ci.yml calls this). The release has already
+# built and installed that PKGBUILD, so this only fills in its checksums and .SRCINFO. Run
+# by hand, it does the same for the given version and pushes it only when asked to.
 on:
   workflow_call:
   workflow_dispatch:
@@ -43,14 +44,13 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed git openssh pacman-contrib
           useradd -m builder
-          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           [ -n "$AUR_SSH_KEY" ] || { echo "AUR_SSH_KEY is not set in the aur environment" >&2; exit 1; }
           install -d -m 700 /aur-ssh
           printf '%s\n' "$AUR_SSH_KEY" > /aur-ssh/key
           chmod 600 /aur-ssh/key
           # The fingerprint published on aur.archlinux.org.
           echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' > /aur-ssh/known_hosts
-      - name: Update the PKGBUILD and build it
+      - name: Update the PKGBUILD
         run: |
           case "$PKGREL" in ''|*[!0-9]*) echo "pkgrel must be a number: $PKGREL" >&2; exit 1;; esac
           git clone "ssh://aur@aur.archlinux.org/$PKGNAME.git" aur
@@ -58,12 +58,6 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=${VERSION#v}/; s/^pkgrel=.*/pkgrel=$PKGREL/" aur/PKGBUILD
           chown -R builder aur
           su builder -c 'cd aur && updpkgsums && makepkg --printsrcinfo > .SRCINFO'
-          # pacman cannot install dependencies that live on the AUR, such as dmemcg-booster;
-          # the build does not need them, so install the rest and skip the check.
-          deps=$(sed -n 's/^\t\(make\|check\)\?depends = \([^<>=]*\).*/\2/p' aur/.SRCINFO)
-          repo=$(for d in $deps; do pacman -Sp "$d" >/dev/null 2>&1 && echo "$d"; done)
-          if [ -n "$repo" ]; then pacman -S --noconfirm --needed --asdeps $repo; fi
-          su builder -c 'cd aur && makepkg --nodeps --noconfirm'
       - name: Push
         if: github.event_name == 'push' || inputs.push
         run: |
