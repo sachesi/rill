@@ -38,8 +38,8 @@ To make it the default for both:
 
     xdg-mime default io.github.sachesi.rill.desktop application/x-bittorrent x-scheme-handler/magnet
 
-Arch Linux: the AUR package `rill-torrent`, built from
-[packaging/aur/PKGBUILD](../packaging/aur/PKGBUILD), which each release tag updates.
+Packages for Fedora, openSUSE, Debian, Ubuntu and Arch Linux, and how to install them, are in
+the [README](../README.md#packages).
 
 ## Removing
 

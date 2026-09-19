@@ -24,6 +24,35 @@ Rill does not seed. A torrent shares pieces with other peers while it downloads,
 once it is complete. There are also no speed limits, no way to pick which files of a torrent
 to download, and no way to recheck data already on disk. These are not supported yet.
 
+## Packages
+
+Fedora 44, 45 and Rawhide, from the Copr project
+[sachesi/software](https://copr.fedorainfracloud.org/coprs/sachesi/software/):
+
+    sudo dnf copr enable sachesi/software
+    sudo dnf install rill
+
+openSUSE Tumbleweed and Slowroll, from the OBS project
+[home:sachesi:software](https://build.opensuse.org/project/show/home:sachesi:software); for
+Slowroll the address has `openSUSE_Slowroll` in it, and on aarch64 `openSUSE_Factory_ARM`:
+
+    sudo zypper addrepo https://download.opensuse.org/repositories/home:sachesi:software/openSUSE_Tumbleweed/home:sachesi:software.repo
+    sudo zypper install rill
+
+Debian testing, from the same OBS project; Ubuntu 26.04 has an older Rust than Rill
+needs:
+
+    sudo install -d /etc/apt/keyrings
+    curl -fsSL https://download.opensuse.org/repositories/home:sachesi:software/Debian_Testing/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/sachesi-software.gpg
+    echo 'deb [signed-by=/etc/apt/keyrings/sachesi-software.gpg] https://download.opensuse.org/repositories/home:sachesi:software/Debian_Testing/ /' | sudo tee /etc/apt/sources.list.d/sachesi-software.list
+    sudo apt update
+    sudo apt install rill
+
+Arch Linux: the AUR package `rill-torrent`, built from
+[packaging/aur/PKGBUILD](packaging/aur/PKGBUILD), which each release tag updates.
+
+The same packages are attached to each [release](https://github.com/sachesi/rill/releases).
+
 ## Building and installing
 
     just build
