@@ -18,23 +18,23 @@
   </description>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.0/data/screenshots/main.png</image>
+      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.1/data/screenshots/main.png</image>
       <caption>Torrents downloading, paused and finished</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.0/data/screenshots/add-torrent.png</image>
+      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.1/data/screenshots/add-torrent.png</image>
       <caption>Adding a torrent file</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.0/data/screenshots/details-overview.png</image>
+      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.1/data/screenshots/details-overview.png</image>
       <caption>Progress, speed and peers of a torrent</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.0/data/screenshots/details-files.png</image>
+      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.1/data/screenshots/details-files.png</image>
       <caption>The files of a torrent</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.0/data/screenshots/preferences.png</image>
+      <image>https://raw.githubusercontent.com/sachesi/rill/v0.3.1/data/screenshots/preferences.png</image>
       <caption>Preferences</caption>
     </screenshot>
   </screenshots>
