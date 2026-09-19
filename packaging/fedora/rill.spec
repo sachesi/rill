@@ -4,6 +4,7 @@
 %global app_id io.github.sachesi.rill
 
 Name:           rill
+# The release workflow and Copr set Version to the tag they build.
 Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Small BitTorrent client
@@ -11,6 +12,8 @@ Summary:        Small BitTorrent client
 License:        GPL-3.0-or-later AND Apache-2.0
 URL:            https://github.com/sachesi/rill
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
+# The crates the build needs, from the release, so that it runs without a network.
+Source1:        %{url}/releases/download/v%{version}/%{name}-%{version}-vendor.tar.xz
 
 BuildRequires:  cargo
 BuildRequires:  rust >= 1.92
@@ -37,7 +40,7 @@ torrent sequentially. On desktops with a system tray the transfers go on
 after the window is closed.
 
 %prep
-%autosetup -n %{name}-%{version}
+%autosetup -n %{name}-%{version} -b 1
 
 %build
 export CARGO_HOME="$PWD/.cargo-home"
@@ -46,7 +49,7 @@ export RILL_LOCALEDIR="%{_datadir}/locale"
 %if 0%{?_cargo_target_dir:1}
 export CARGO_TARGET_DIR="%{_cargo_target_dir}"
 %endif
-cargo build --release
+cargo build --release --offline --locked
 
 %install
 %if 0%{?_cargo_target_dir:1}
