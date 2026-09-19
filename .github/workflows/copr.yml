@@ -17,6 +17,10 @@ jobs:
   copr:
     name: Build in Copr
     runs-on: ubuntu-latest
+    # Listed with the repository's deployments, linking to the package in Copr.
+    environment:
+      name: copr
+      url: https://copr.fedorainfracloud.org/coprs/sachesi/software/package/rill/
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
