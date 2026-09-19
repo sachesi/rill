@@ -54,6 +54,8 @@ jobs:
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
+    # For the Copr webhook.
+    secrets: inherit
 
   aur:
     name: AUR
