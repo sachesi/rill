@@ -3,9 +3,8 @@ name: Release
 # A release tag gets a GitHub release, once CI has passed (ci.yml calls this). The tag
 # must agree with the version in the sources and with the newest release in the metainfo,
 # whose notes become the release's. The release carries the crates the build needs, for
-# building without a network, and packages for Fedora, Debian and Arch Linux. Once
-# published, it is built in Copr, in sachesi/software. Run by hand, it publishes a tag
-# pushed before this workflow existed.
+# building without a network, and packages for Fedora, Debian and Arch Linux. Run by hand,
+# it publishes a tag pushed before this workflow existed.
 on:
   workflow_call:
   workflow_dispatch:
@@ -260,17 +259,3 @@ jobs:
             gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --title "Rill ${TAG#v}" \
               --notes-file ../notes/notes.md *
           fi
-
-  copr:
-    name: Build in Copr
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Start the build
-        env:
-          # The custom webhook of sachesi/software, without the package name.
-          COPR_WEBHOOK: ${{ secrets.COPR_WEBHOOK }}
-        run: |
-          [ -n "$COPR_WEBHOOK" ] || { echo "COPR_WEBHOOK is not set" >&2; exit 1; }
-          # Copr's script for the package builds the tag it is sent, with the spec on main.
-          curl -fsS -X POST --data "$TAG" "${COPR_WEBHOOK%/}/rill/"

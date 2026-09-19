@@ -54,8 +54,6 @@ jobs:
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
-    # For the Copr webhook.
-    secrets: inherit
 
   aur:
     name: AUR
@@ -64,4 +62,12 @@ jobs:
     uses: ./.github/workflows/aur.yml
     # A called workflow sees no secrets, its environment's included, unless the
     # caller passes them on.
+    secrets: inherit
+
+  copr:
+    name: Copr
+    # After the release, whose files the build downloads.
+    needs: release
+    uses: ./.github/workflows/copr.yml
+    # A called workflow sees no secrets unless the caller passes them on.
     secrets: inherit
