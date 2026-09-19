@@ -9,7 +9,7 @@ repository = "https://github.com/sachesi/rill"
 readme = "README.md"
 
 [dependencies]
-mtorrent = "0.6.0"
+mtorrent = "0.6.1"
 adw = { package = "libadwaita", version = "0.9", features = ["v1_8"] }
 gtk = { package = "gtk4", version = "0.11", features = ["v4_20"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time", "io-util", "net"] }
