@@ -9,7 +9,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
-use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
+use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
 
 use crate::util::format_size;
 use crate::window::RillWindow;

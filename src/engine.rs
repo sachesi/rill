@@ -777,7 +777,7 @@ fn clean_name(name: &str) -> String {
 /// "unnamed" for a link without one, so two such links saved to one folder would share
 /// them.
 pub(crate) fn name_nameless_magnet(uri: &str) -> String {
-    use mtorrent::utils::re_exports::mtorrent_core::input::MagnetLink;
+    use mtorrent::utils::re_exports::mtorrent_base::input::MagnetLink;
     use std::str::FromStr;
 
     let Ok(magnet) = MagnetLink::from_str(uri) else {
@@ -821,7 +821,7 @@ fn hash_uri(uri: &str) -> String {
 /// added via magnet and via file maps to one entry instead of two concurrent
 /// downloads. Falls back to hashing the URI text when nothing parses.
 pub(crate) fn torrent_id(uri: &str) -> String {
-    use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
+    use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
     use std::str::FromStr;
 
     let path = std::path::Path::new(uri);

@@ -3,7 +3,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use mtorrent::utils::re_exports::mtorrent_core::input::MagnetLink;
+use mtorrent::utils::re_exports::mtorrent_base::input::MagnetLink;
 
 /// The file or folder mtorrent writes a torrent's content to: the magnet's name, or the
 /// stem of the .torrent file, inside `output_dir`. `None` when that name would not be a
@@ -135,7 +135,7 @@ pub struct ContentLayout {
 /// The layout of a torrent's content, or `None` while its metadata cannot be read: a magnet
 /// link's is not on disk until peers send it.
 pub fn content_layout(uri: &str, output_dir: &Path) -> Option<ContentLayout> {
-    use mtorrent::utils::re_exports::mtorrent_core::input::Metainfo;
+    use mtorrent::utils::re_exports::mtorrent_base::input::Metainfo;
 
     let content = content_path(uri, output_dir)?;
     let metainfo = Metainfo::from_file(metainfo_path(uri, output_dir)?).ok()?;
@@ -396,7 +396,7 @@ mod tests {
     /// A .torrent file in `dir` for the files named and sized in `files`, in pieces of four
     /// bytes, with a progress file in its content folder counting every piece downloaded.
     fn torrent_with_progress(dir: &Path, files: &[(&str, usize)]) -> String {
-        use mtorrent::utils::re_exports::mtorrent_core::input::Metainfo;
+        use mtorrent::utils::re_exports::mtorrent_base::input::Metainfo;
         use mtorrent::utils::re_exports::mtorrent_utils::benc::Element;
 
         let length: usize = files.iter().map(|(_, length)| length).sum();

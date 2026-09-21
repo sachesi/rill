@@ -12,7 +12,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
-use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
+use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
 
 use super::file_item::FileItem;
 use crate::engine::{PeerInfo, TorrentEngine, TorrentUiState, UiUpdate};

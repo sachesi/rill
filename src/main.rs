@@ -33,10 +33,10 @@ fn main() -> glib::ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
         .filter_module("mtorrent::app::dht", log::LevelFilter::Warn)
         .filter_module("mtorrent::app::main", log::LevelFilter::Warn)
-        .filter_module("mtorrent_core::utp", log::LevelFilter::Error)
+        .filter_module("mtorrent_base::utp", log::LevelFilter::Error)
         // mtorrent logs routine peer churn (reset, interrupted, bad ack) as errors.
-        .filter_module("mtorrent_core::utp::handle", log::LevelFilter::Off)
-        .filter_module("mtorrent_core::utp::udp", log::LevelFilter::Off)
+        .filter_module("mtorrent_base::utp::handle", log::LevelFilter::Off)
+        .filter_module("mtorrent_base::utp::udp", log::LevelFilter::Off)
         .init();
 
     raise_open_file_limit();
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn torrent_data_is_written_and_read_on_the_storage_runtime() {
-        use mtorrent::utils::re_exports::mtorrent_core::data::new_async_storage;
+        use mtorrent::utils::re_exports::mtorrent_base::data::new_async_storage;
 
         let dir = std::env::temp_dir().join(format!("rill-storage-{}", std::process::id()));
         let runtime = storage_runtime().unwrap();

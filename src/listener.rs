@@ -83,7 +83,7 @@ const PIECE_MAP_BUCKETS: usize = 200;
 /// (`output_dir/<metainfo file stem>` for files, `output_dir/<magnet name>` for
 /// magnets).
 fn resolve_state_target(uri: &str, output_dir: &std::path::Path) -> Option<(PathBuf, [u8; 20])> {
-    use mtorrent::utils::re_exports::mtorrent_core::input::{MagnetLink, Metainfo};
+    use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
     use std::str::FromStr;
 
     let path = std::path::Path::new(uri);
@@ -150,7 +150,7 @@ fn build_piece_map(
 /// The name the torrent's metadata gives it: from the .torrent file it was added from, or
 /// for a magnet link from the one mtorrent saved once it fetched the metadata.
 fn metainfo_name(uri: &str, output_dir: &std::path::Path) -> Option<String> {
-    use mtorrent::utils::re_exports::mtorrent_core::input::Metainfo;
+    use mtorrent::utils::re_exports::mtorrent_base::input::Metainfo;
 
     let path = crate::torrent_paths::metainfo_path(uri, output_dir)?;
     let meta = Metainfo::from_file(path).ok()?;
