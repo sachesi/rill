@@ -219,7 +219,6 @@ fn storage_runtime() -> std::io::Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(STORAGE_THREADS)
         .thread_name("storage-runtime")
-        .enable_all()
         .build()
 }
 
