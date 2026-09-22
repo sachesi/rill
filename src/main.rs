@@ -64,17 +64,6 @@ fn main() -> glib::ExitCode {
         return app.run();
     }
 
-    // mtorrent spawns DHT and engine tasks on the ambient runtime, so the process stays
-    // inside one for its whole life.
-    let rt = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(e) => {
-            eprintln!("rill: could not start the Tokio runtime: {e}");
-            return glib::ExitCode::FAILURE;
-        }
-    };
-    let _guard = rt.enter();
-
     match start_session() {
         Ok(session) => app.set_session(session),
         Err(e) => {
