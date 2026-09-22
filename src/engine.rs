@@ -251,32 +251,27 @@ impl TorrentEngine {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
-                .build()
+                .build_local(Default::default())
                 .unwrap();
 
             rt.block_on(async {
-                let local = tokio::task::LocalSet::new();
-                local
-                    .run_until(async {
-                        // The last run of each torrent. A new run waits for the one before
-                        // it to end, which a pause or restart has already asked of it, so
-                        // that the two never share the torrent's files.
-                        let mut runs: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
-                        while let Some(cmd) = cmd_rx.recv().await {
-                            runs.retain(|_, run| !run.is_finished());
-                            let previous = runs.remove(&cmd.info_hash);
-                            let hash = cmd.info_hash.clone();
-                            let shared = shared.clone();
-                            let run = tokio::task::spawn_local(async move {
-                                if let Some(previous) = previous {
-                                    let _ = previous.await;
-                                }
-                                run_torrent(cmd, shared).await
-                            });
-                            runs.insert(hash, run);
+                // The last run of each torrent. A new run waits for the one before
+                // it to end, which a pause or restart has already asked of it, so
+                // that the two never share the torrent's files.
+                let mut runs: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
+                while let Some(cmd) = cmd_rx.recv().await {
+                    runs.retain(|_, run| !run.is_finished());
+                    let previous = runs.remove(&cmd.info_hash);
+                    let hash = cmd.info_hash.clone();
+                    let shared = shared.clone();
+                    let run = tokio::task::spawn_local(async move {
+                        if let Some(previous) = previous {
+                            let _ = previous.await;
                         }
-                    })
-                    .await;
+                        run_torrent(cmd, shared).await
+                    });
+                    runs.insert(hash, run);
+                }
             });
         });
 
