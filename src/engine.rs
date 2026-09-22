@@ -250,7 +250,7 @@ impl TorrentEngine {
         };
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
+                .enable_time()
                 .build_local(Default::default())
                 .unwrap();
 
