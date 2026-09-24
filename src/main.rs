@@ -101,7 +101,7 @@ fn start_session() -> Result<Session, String> {
 
     let (dht_worker, dht_cmds) = mt::app::dht::launch_dht_node_runtime(mt::app::dht::Config {
         local_port: dht_port(),
-        max_concurrent_queries: Some(10),
+        max_concurrent_queries: None,
         config_dir: data_dir.clone(),
         use_upnp: false,
         bootstrap_nodes_override: None,
