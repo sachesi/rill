@@ -57,6 +57,12 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.3.2" date="2026-09-24">
+      <description>
+        <p>Rill finds peers through the DHT much sooner. It sent no more than ten DHT queries at a time, so searching for a torrent's peers waited behind the node's own upkeep and often found none. Rill now uses mtorrent 0.7.2 and starts fewer threads.</p>
+        <p>Uninstalling a build from source refreshes the icon cache, so removing a per-user install no longer leaves Rill without icons when it is also installed for the whole system.</p>
+      </description>
+    </release>
     <release version="0.3.1" date="2026-09-19">
       <description>
         <p>Rill now uses mtorrent 0.6.1, which closes a torrent's uTP connections before the torrent stops. A torrent that is paused and resumed, or switched to downloading in order, keeps its port instead of moving to another one, and its peers learn at once that the connection has ended. A tracker that was already removed and a message a peer sends that mtorrent does not know are no longer reported as errors.</p>
