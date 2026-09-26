@@ -1017,6 +1017,12 @@ impl RillWindow {
                 while let Ok(event) = rx.recv().await {
                     match event {
                         UiEvent::Update(update) => {
+                            // Sent before the torrent was paused, or by the run a resume has
+                            // since replaced: the row already says otherwise.
+                            let paused = update.state == TorrentUiState::Paused;
+                            if paused == window.engine().is_active(&update.info_hash) {
+                                continue;
+                            }
                             window.process_update(&update);
                             let row = window.imp().rows.borrow().get(&update.info_hash).cloned();
                             if let Some(row) = row {
