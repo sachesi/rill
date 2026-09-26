@@ -321,9 +321,15 @@ fn content_size(metainfo: &Metainfo) -> u64 {
     if let Some(length) = metainfo.length() {
         return length as u64;
     }
+    // A made-up torrent's sizes can add up to more than a u64 holds.
     metainfo
         .files()
-        .map_or(0, |files| files.map(|(length, _path)| length as u64).sum())
+        .and_then(|files| {
+            files
+                .map(|(length, _path)| length as u64)
+                .try_fold(0u64, u64::checked_add)
+        })
+        .unwrap_or(0)
 }
 
 /// The bytes free in the filesystem `folder` is on, or `None` when it does not say.
@@ -441,13 +447,27 @@ mod tests {
         )
         .unwrap();
 
-        let sizes = [single, multi].map(|path| {
+        // Sizes that add up to more than a u64 holds: nothing to warn about.
+        let huge = dir.join("huge.torrent");
+        let file = |name: &str| format!("d6:lengthi{}e4:pathl1:{name}ee", i64::MAX);
+        std::fs::write(
+            &huge,
+            format!(
+                "d4:infod5:filesl{}{}{}e4:name4:huge12:piece lengthi16384e6:pieces20:aaaaaaaaaaaaaaaaaaaaee",
+                file("a"),
+                file("b"),
+                file("c")
+            ),
+        )
+        .unwrap();
+
+        let sizes = [single, multi, huge].map(|path| {
             Metainfo::from_file(&path)
                 .map(|metainfo| content_size(&metainfo))
                 .ok()
         });
         std::fs::remove_dir_all(&dir).unwrap();
-        assert_eq!(sizes, [Some(1024), Some(1024)]);
+        assert_eq!(sizes, [Some(1024), Some(1024), Some(0)]);
     }
 
     #[test]
