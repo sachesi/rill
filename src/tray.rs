@@ -85,14 +85,20 @@ pub fn spawn() -> Receiver<TrayCommand> {
     use ksni::blocking::TrayMethods;
 
     let (tx, rx) = async_channel::unbounded();
-    match (RillTray { tx }).spawn() {
-        Ok(handle) => {
-            AVAILABLE.store(true, Ordering::Release);
-            // The tray's service loop ends when its handle is dropped; it lives as long
-            // as the process.
-            std::mem::forget(handle);
-        }
-        Err(e) => log::warn!("System tray unavailable: {e}"),
+    // Registering waits on the session bus, which the window need not wait for.
+    let registered = std::thread::Builder::new()
+        .name("tray".into())
+        .spawn(move || match (RillTray { tx }).spawn() {
+            Ok(handle) => {
+                AVAILABLE.store(true, Ordering::Release);
+                // The tray's service loop ends when its handle is dropped; it lives as
+                // long as the process.
+                std::mem::forget(handle);
+            }
+            Err(e) => log::warn!("System tray unavailable: {e}"),
+        });
+    if let Err(e) = registered {
+        log::warn!("System tray unavailable: {e}");
     }
     rx
 }
