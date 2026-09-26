@@ -128,7 +128,7 @@ fn start_session() -> Result<Session, String> {
     log::info!("Loaded {} saved torrents", saved.len());
 
     Ok(Session {
-        _dht_worker: dht_worker,
+        dht_worker: Some(dht_worker).into(),
         _storage_runtime: storage_runtime,
         engine,
         storage,

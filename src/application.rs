@@ -16,8 +16,9 @@ use crate::window::RillWindow;
 
 /// What the application runs on once it is the primary instance.
 pub struct Session {
-    /// Owns the DHT thread; dropping it stops the node.
-    pub _dht_worker: worker::rt::Handle,
+    /// Owns the DHT thread; dropping it stops the node, which then saves the nodes it
+    /// knows for the next start.
+    pub dht_worker: RefCell<Option<worker::rt::Handle>>,
     /// Runs the torrents' disk storage; dropping it stops that.
     pub _storage_runtime: tokio::runtime::Runtime,
     pub engine: Rc<TorrentEngine>,
@@ -85,6 +86,9 @@ mod imp {
                 session.engine.pause_all();
                 // Let every queued write reach the disk before the process exits.
                 session.storage.flush_blocking();
+                // The process exits without dropping the session, and the node only saves
+                // what it knows when it stops.
+                drop(session.dht_worker.take());
             }
             self.parent_shutdown();
         }
