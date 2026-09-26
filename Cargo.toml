@@ -27,6 +27,9 @@ libc = "0.2"
 [build-dependencies]
 glib-build-tools = "0.22"
 
+[lints.clippy]
+undocumented_unsafe_blocks = "warn"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
