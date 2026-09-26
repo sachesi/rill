@@ -235,12 +235,18 @@ fn spawn_local_runtime(name: &str) -> Result<tokio::runtime::Handle, String> {
 /// Records saved before torrents were keyed by their info hash used a hash of the URI
 /// text. Re-key them so the engine finds the same rows; a record whose info hash is
 /// already taken keeps its old key.
+///
+/// Only a key made from the URI text is looked at: a record keyed by its info hash stays
+/// so while its .torrent file is gone, and the files of the others are not read on every
+/// start.
 fn rekey_legacy_records(storage: &Storage, saved: &mut [storage::SavedTorrent]) {
     for torrent in saved {
-        let canonical = engine::torrent_id(&torrent.uri);
-        if canonical == torrent.info_hash {
+        if torrent.info_hash != engine::hash_uri(&torrent.uri) {
             continue;
         }
+        let Some(canonical) = engine::info_hash(&torrent.uri) else {
+            continue;
+        };
         match storage.migrate_torrent_hash(&torrent.info_hash, &canonical) {
             Ok(true) => {
                 log::info!(
@@ -333,6 +339,44 @@ mod tests {
 
         assert_eq!(free_udp_port([taken, free]), free);
         assert_eq!(free_udp_port([taken]), 0);
+    }
+
+    #[test]
+    fn only_records_keyed_by_their_uri_are_rekeyed() {
+        let dir = test_support::ScratchDir::new("rekey");
+        let storage = Storage::open(dir.path().join("torrents.db")).unwrap();
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        let magnet = format!("magnet:?xt=urn:btih:{hex}");
+        // Added from a .torrent file that has been removed since.
+        let gone = dir
+            .path()
+            .join("gone.torrent")
+            .to_string_lossy()
+            .into_owned();
+        let record = |key: String, uri: &str| {
+            storage::SavedTorrent::new(
+                key,
+                "name".into(),
+                uri.into(),
+                "paused".into(),
+                0,
+                0,
+                dir.path().into(),
+            )
+        };
+        let mut saved = [
+            record(engine::hash_uri(&magnet), &magnet),
+            record("f".repeat(40), &gone),
+        ];
+        for torrent in &saved {
+            storage.save_torrent(torrent).unwrap();
+        }
+
+        rekey_legacy_records(&storage, &mut saved);
+        assert_eq!(saved[0].info_hash, hex);
+        assert!(storage.load_torrent(hex).unwrap().is_some());
+        assert_eq!(saved[1].info_hash, "f".repeat(40));
+        assert!(storage.load_torrent(&"f".repeat(40)).unwrap().is_some());
     }
 
     #[test]
