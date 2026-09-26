@@ -911,27 +911,7 @@ impl RillWindow {
     }
 
     fn delete_torrent(&self, hash: &str, delete_data: bool) {
-        let imp = self.imp();
-        imp.torrents.borrow_mut().delete(hash);
-        imp.layouts
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(hash);
-        let dialog = imp.info_dialogs.borrow_mut().remove(hash);
-        if let Some(dialog) = dialog {
-            dialog.close();
-        }
-        self.engine().stop(hash);
-
-        let row = imp.rows.borrow_mut().remove(hash);
-        if let Some(row) = row
-            && let Some(list) = row.parent().and_downcast::<gtk::ListBox>()
-        {
-            list.remove(&row);
-        }
-        self.update_sections();
-        self.update_selection_actions();
-        self.check_queue();
+        self.forget_torrent(hash);
 
         let storage = self.storage().clone();
         let hash = hash.to_string();
@@ -981,6 +961,31 @@ impl RillWindow {
                 });
             }
         ));
+    }
+
+    /// Stops a torrent and takes it off the list, leaving its record and its files alone.
+    fn forget_torrent(&self, hash: &str) {
+        let imp = self.imp();
+        imp.torrents.borrow_mut().delete(hash);
+        imp.layouts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(hash);
+        let dialog = imp.info_dialogs.borrow_mut().remove(hash);
+        if let Some(dialog) = dialog {
+            dialog.close();
+        }
+        self.engine().stop(hash);
+
+        let row = imp.rows.borrow_mut().remove(hash);
+        if let Some(row) = row
+            && let Some(list) = row.parent().and_downcast::<gtk::ListBox>()
+        {
+            list.remove(&row);
+        }
+        self.update_sections();
+        self.update_selection_actions();
+        self.check_queue();
     }
 
     fn show_info(&self, row: &TorrentRow) {
@@ -1120,10 +1125,7 @@ impl RillWindow {
 
         let row = match existing {
             Some(row) => row,
-            None => match self.insert_torrent(&update) {
-                Some(row) => row,
-                None => return,
-            },
+            None => self.insert_torrent(&update),
         };
         let old_state = row.state();
         row.set_queued(imp.torrents.borrow().is_queued(&update.info_hash));
@@ -1167,7 +1169,7 @@ impl RillWindow {
     }
 
     /// Saves a torrent seen for the first time and makes its row.
-    fn insert_torrent(&self, update: &UiUpdate) -> Option<TorrentRow> {
+    fn insert_torrent(&self, update: &UiUpdate) -> TorrentRow {
         let mut record = SavedTorrent::new(
             update.info_hash.clone(),
             update.name.clone(),
@@ -1180,18 +1182,26 @@ impl RillWindow {
         record.total_pieces = update.total_pieces as u64;
         record.downloaded_pieces = update.downloaded_pieces as u64;
         record.sequential = update.sequential;
-        // Written at once rather than queued: a torrent that cannot be saved is not kept.
-        if let Err(e) = self.storage().save_torrent(&record) {
-            log::warn!("Failed to save new torrent: {e}");
-            self.engine().stop(&update.info_hash);
-            self.show_toast(&gettext("Could not save the torrent: %s").replace("%s", &e));
-            return None;
-        }
         self.imp()
             .torrents
             .borrow_mut()
             .add(&update.info_hash, update.state, record.added_at);
-        Some(self.make_row(&update.info_hash))
+        // Queued ahead of the torrent's first snapshot. A torrent that cannot be saved is
+        // not kept.
+        let saved = self.storage().query(move |s| s.save_torrent(&record));
+        let hash = update.info_hash.clone();
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            async move {
+                if let Err(e) = saved.await.and_then(|r| r) {
+                    log::warn!("Failed to save new torrent: {e}");
+                    window.forget_torrent(&hash);
+                    window.show_toast(&gettext("Could not save the torrent: %s").replace("%s", &e));
+                }
+            }
+        ));
+        self.make_row(&update.info_hash)
     }
 
     fn make_row(&self, hash: &str) -> TorrentRow {

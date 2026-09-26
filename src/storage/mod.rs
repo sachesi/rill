@@ -82,10 +82,12 @@ impl Storage {
         }
     }
 
-    /// Run a read on the worker thread and await its result. Awaiting the
-    /// returned future on the GTK main context never blocks the UI: the oneshot
-    /// receiver is a plain waker future, woken when the worker sends the result.
-    pub async fn query<F, R>(&self, f: F) -> Result<R, String>
+    /// Run a job on the worker thread and await its result. The job is queued
+    /// by this call, not when the future is first polled, so it keeps its place
+    /// among the jobs queued before and after it. Awaiting the returned future on
+    /// the GTK main context never blocks the UI: the oneshot receiver is a plain
+    /// waker future, woken when the worker sends the result.
+    pub fn query<F, R>(&self, f: F) -> impl Future<Output = Result<R, String>> + use<F, R>
     where
         F: FnOnce(&Storage) -> R + Send + 'static,
         R: Send + 'static,
@@ -94,8 +96,10 @@ impl Storage {
         self.execute(move |s| {
             let _ = otx.send(f(s));
         });
-        orx.await
-            .map_err(|_| "Storage worker dropped query".to_string())
+        async move {
+            orx.await
+                .map_err(|_| "Storage worker dropped query".to_string())
+        }
     }
 
     /// Block until the worker has drained every job queued before this call.
