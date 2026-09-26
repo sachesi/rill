@@ -16,7 +16,7 @@ use gtk::{gdk, gio, glib};
 
 use crate::dialogs::{AddTorrentDialog, TorrentInfoDialog};
 use crate::engine::{TorrentEngine, TorrentUiState, UiEvent, UiUpdate};
-use crate::storage::{SavedTorrent, Storage};
+use crate::storage::{AppSettings, SavedTorrent, Storage};
 use crate::torrent_paths;
 use crate::torrent_row::TorrentRow;
 use crate::torrents::{Torrents, state_key};
@@ -504,15 +504,33 @@ impl RillWindow {
     }
 
     pub fn add_magnet_link(&self, uri: &str) {
-        let dialog = AddTorrentDialog::new(self);
-        dialog.set_magnet(uri);
-        dialog.present(Some(self));
+        let uri = uri.to_string();
+        self.open_add_dialog(move |dialog| dialog.set_magnet(&uri));
     }
 
     pub fn add_torrent_file(&self, path: &Path) {
-        let dialog = AddTorrentDialog::new(self);
-        dialog.set_file(path);
-        dialog.present(Some(self));
+        let path = path.to_path_buf();
+        self.open_add_dialog(move |dialog| dialog.set_file(&path));
+    }
+
+    /// Opens the dialog that adds a torrent, set up by `setup`, once the download folder it
+    /// offers has been read.
+    fn open_add_dialog(&self, setup: impl FnOnce(&AddTorrentDialog) + 'static) {
+        let folder = self
+            .storage()
+            .query(|s| s.load_settings().download_folder_path());
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            async move {
+                let folder = folder
+                    .await
+                    .unwrap_or_else(|_| AppSettings::default().download_folder_path());
+                let dialog = AddTorrentDialog::new(&window, folder);
+                setup(&dialog);
+                dialog.present(Some(&window));
+            }
+        ));
     }
 
     /// Hands a torrent, known by `hash`, to the engine, running or paused. The row

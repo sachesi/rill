@@ -107,10 +107,11 @@ glib::wrapper! {
 }
 
 impl AddTorrentDialog {
-    pub fn new(window: &RillWindow) -> Self {
+    /// A dialog that saves to `folder` unless another is chosen.
+    pub fn new(window: &RillWindow, folder: PathBuf) -> Self {
         let dialog: Self = glib::Object::new();
         dialog.imp().window.set(Some(window));
-        dialog.set_folder(window.storage().load_settings().download_folder_path());
+        dialog.set_folder(folder);
         dialog
     }
 
@@ -126,14 +127,33 @@ impl AddTorrentDialog {
         let imp = self.imp();
         self.set_title(&gettext("Add Torrent File"));
         imp.magnet_group.set_visible(false);
-        imp.needed_bytes
-            .set(Metainfo::from_file(path).map_or(0, |metainfo| content_size(&metainfo)));
+        imp.needed_bytes.set(0);
         self.check_space();
         imp.file_row
             .set_subtitle(&path.file_name().unwrap_or_default().to_string_lossy());
         imp.file.replace(Some(path.to_path_buf()));
         imp.add_button.set_sensitive(true);
         self.set_focus(Some(&*imp.add_button));
+
+        let path = path.to_path_buf();
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = dialog)]
+            self,
+            async move {
+                let file = path.clone();
+                let needed = gio::spawn_blocking(move || {
+                    Metainfo::from_file(file).map_or(0, |metainfo| content_size(&metainfo))
+                })
+                .await
+                .unwrap_or(0);
+                let imp = dialog.imp();
+                // Another file may have been chosen in the meantime.
+                if imp.file.borrow().as_ref() == Some(&path) {
+                    imp.needed_bytes.set(needed);
+                    dialog.check_space();
+                }
+            }
+        ));
     }
 
     fn set_folder(&self, folder: PathBuf) {
@@ -150,21 +170,38 @@ impl AddTorrentDialog {
     fn check_space(&self) {
         let imp = self.imp();
         let needed = imp.needed_bytes.get();
-        let free = free_space(&imp.folder.borrow());
-        let short = match (needed, free) {
-            (0, _) | (_, None) => false,
-            (needed, Some(free)) => needed > free,
-        };
-        imp.space_warning.set_visible(short);
-        if short {
-            // Translators: %1 is what a torrent needs, %2 what the folder has left,
-            // both sizes like "4.0 GiB".
-            imp.space_warning.set_text(
-                &gettext("Not enough space in this folder: %1 needed, %2 free")
-                    .replace("%1", &format_size(needed))
-                    .replace("%2", &format_size(free.unwrap_or(0))),
-            );
+        if needed == 0 {
+            imp.space_warning.set_visible(false);
+            return;
         }
+        let folder = imp.folder.borrow().clone();
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = dialog)]
+            self,
+            async move {
+                let dir = folder.clone();
+                // A folder on a sleeping disk or a network share can take a while to say.
+                let free = gio::spawn_blocking(move || free_space(&dir))
+                    .await
+                    .ok()
+                    .flatten();
+                let imp = dialog.imp();
+                if imp.needed_bytes.get() != needed || *imp.folder.borrow() != folder {
+                    return;
+                }
+                let short = free.is_some_and(|free| needed > free);
+                imp.space_warning.set_visible(short);
+                if short {
+                    // Translators: %1 is what a torrent needs, %2 what the folder has left,
+                    // both sizes like "4.0 GiB".
+                    imp.space_warning.set_text(
+                        &gettext("Not enough space in this folder: %1 needed, %2 free")
+                            .replace("%1", &format_size(needed))
+                            .replace("%2", &format_size(free.unwrap_or(0))),
+                    );
+                }
+            }
+        ));
     }
 
     fn choose_file(&self) {
