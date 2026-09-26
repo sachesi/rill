@@ -147,7 +147,7 @@ pub fn content_layout(uri: &str, output_dir: &Path) -> Option<ContentLayout> {
     Some(ContentLayout {
         content,
         info_hash: *metainfo.info_hash(),
-        piece_length: metainfo.piece_length()?,
+        piece_length: metainfo.piece_length().filter(|&length| length > 0)?,
         files,
     })
 }
@@ -179,19 +179,21 @@ pub fn find_missing_content(
         });
     };
 
-    let mut offset = 0;
+    let mut offset = 0usize;
     let mut present_bytes = 0;
     let mut missing = Vec::new();
     for (length, path) in &layout.files {
+        // Sizes that add up to more bytes than there are say nothing of the files.
+        let end = offset.checked_add(*length)?;
         let there = *length == 0
             || std::fs::metadata(layout.content.join(path))
                 .is_ok_and(|meta| meta.is_file() && meta.len() >= *length as u64);
         if there {
             present_bytes += *length as u64;
         } else {
-            missing.push(offset..offset + length);
+            missing.push(offset..end);
         }
-        offset += length;
+        offset = end;
     }
     if missing.is_empty() {
         return None;
@@ -393,20 +395,24 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
-    /// A .torrent file in `dir` for the files named and sized in `files`, in pieces of four
-    /// bytes, with a progress file in its content folder counting every piece downloaded.
-    fn torrent_with_progress(dir: &Path, files: &[(&str, usize)]) -> String {
-        use mtorrent::utils::re_exports::mtorrent_base::input::Metainfo;
+    /// A .torrent file `show.torrent` in `dir` for the files named and sized in `files`, in
+    /// pieces of `piece_length` bytes.
+    fn write_metainfo(dir: &Path, files: &[(&str, i64)], piece_length: i64) -> PathBuf {
         use mtorrent::utils::re_exports::mtorrent_utils::benc::Element;
 
-        let length: usize = files.iter().map(|(_, length)| length).sum();
-        let pieces = length.div_ceil(4);
+        let length = files
+            .iter()
+            .fold(0i64, |sum, (_, length)| sum.saturating_add(*length));
+        // The hashes are never checked; a few do for sizes too big to have them all.
+        let pieces = (length as usize)
+            .div_ceil(piece_length.max(1) as usize)
+            .min(1024);
         let files = files
             .iter()
             .map(|(name, length)| {
                 Element::Dictionary(
                     [
-                        (Element::from("length"), Element::Integer(*length as i64)),
+                        (Element::from("length"), Element::Integer(*length)),
                         (
                             Element::from("path"),
                             Element::List(vec![Element::from(*name)]),
@@ -420,7 +426,10 @@ mod tests {
             [
                 (Element::from("files"), Element::List(files)),
                 (Element::from("name"), Element::from("show")),
-                (Element::from("piece length"), Element::Integer(4)),
+                (
+                    Element::from("piece length"),
+                    Element::Integer(piece_length),
+                ),
                 (
                     Element::from("pieces"),
                     Element::ByteString(vec![0; pieces * 20]),
@@ -429,8 +438,24 @@ mod tests {
             .into(),
         );
         let metainfo = Element::Dictionary([(Element::from("info"), info)].into());
-        let uri = dir.join("show.torrent");
-        std::fs::write(&uri, metainfo.encode()).unwrap();
+        let path = dir.join("show.torrent");
+        std::fs::write(&path, metainfo.encode()).unwrap();
+        path
+    }
+
+    /// A .torrent file in `dir` for the files named and sized in `files`, in pieces of four
+    /// bytes, with a progress file in its content folder counting every piece downloaded.
+    fn torrent_with_progress(dir: &Path, files: &[(&str, usize)]) -> String {
+        use mtorrent::utils::re_exports::mtorrent_base::input::Metainfo;
+        use mtorrent::utils::re_exports::mtorrent_utils::benc::Element;
+
+        let sizes: Vec<(&str, i64)> = files
+            .iter()
+            .map(|(name, length)| (*name, *length as i64))
+            .collect();
+        let uri = write_metainfo(dir, &sizes, 4);
+        let length: usize = files.iter().map(|(_, length)| length).sum();
+        let pieces = length.div_ceil(4);
 
         let info_hash = *Metainfo::from_file(&uri).unwrap().info_hash();
         let mut bitfield = vec![0u8; pieces.div_ceil(8)];
@@ -522,6 +547,29 @@ mod tests {
         );
         let update = h.wait_for_update(&hash, std::time::Duration::from_secs(20), |u| u.total > 0);
         assert_eq!(update.downloaded, 0);
+    }
+
+    #[test]
+    fn a_torrent_whose_sizes_make_no_sense_is_not_looked_into() {
+        let dir = crate::test_support::ScratchDir::new("impossible-sizes");
+        let output_dir = dir.path();
+        std::fs::create_dir_all(output_dir.join("show")).unwrap();
+
+        let uri = write_metainfo(output_dir, &[("one", 10)], 0);
+        let uri = uri.to_string_lossy();
+        assert!(content_layout(&uri, output_dir).is_none());
+
+        let uri = write_metainfo(
+            output_dir,
+            &[("one", i64::MAX), ("two", i64::MAX), ("three", i64::MAX)],
+            4,
+        );
+        let uri = uri.to_string_lossy();
+        let layout = content_layout(&uri, output_dir);
+        assert_eq!(
+            find_missing_content(&uri, output_dir, layout.as_ref(), false),
+            None
+        );
     }
 
     #[test]
