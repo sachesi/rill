@@ -11,7 +11,7 @@ pub struct SavedTorrent {
     pub state: String,
     pub downloaded: u64,
     pub total: u64,
-    pub output_dir: String,
+    pub output_dir: PathBuf,
     pub added_at: i64,
     pub completed_at: Option<i64>,
     pub last_active: i64,
@@ -38,7 +38,7 @@ impl SavedTorrent {
             state,
             downloaded,
             total,
-            output_dir: output_dir.to_string_lossy().to_string(),
+            output_dir,
             added_at: now,
             completed_at: None,
             last_active: now,
@@ -47,15 +47,11 @@ impl SavedTorrent {
             sequential: false,
         }
     }
-
-    pub fn output_dir_path(&self) -> PathBuf {
-        PathBuf::from(&self.output_dir)
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct AppSettings {
-    pub download_folder: String,
+    pub download_folder: PathBuf,
     pub window_width: i32,
     pub window_height: i32,
     pub window_maximized: bool,
@@ -81,18 +77,10 @@ impl Default for AppSettings {
     }
 }
 
-impl AppSettings {
-    pub fn download_folder_path(&self) -> PathBuf {
-        PathBuf::from(&self.download_folder)
-    }
-}
-
-pub fn default_download_folder() -> String {
+pub fn default_download_folder() -> PathBuf {
     dirs_next::download_dir()
         .or_else(dirs_next::home_dir)
         .unwrap_or_else(|| PathBuf::from("."))
-        .to_string_lossy()
-        .to_string()
 }
 
 /// Seconds since the Unix epoch, as the database stores times.

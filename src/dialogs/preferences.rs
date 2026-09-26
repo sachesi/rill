@@ -132,7 +132,7 @@ impl PreferencesDialog {
 
         // Filled in before the storage is set, so that nothing is written back.
         imp.folder_row
-            .set_subtitle(&settings.download_folder_path().to_string_lossy());
+            .set_subtitle(&settings.download_folder.to_string_lossy());
         imp.max_downloads_row
             .set_value(settings.max_active_downloads as f64);
         imp.filling.set(true);
@@ -210,8 +210,7 @@ impl PreferencesDialog {
                             .imp()
                             .folder_row
                             .set_subtitle(&path.to_string_lossy());
-                        let folder = path.to_string_lossy().into_owned();
-                        dialog.save(move |s| s.download_folder = folder);
+                        dialog.save(move |s| s.download_folder = path);
                     }
                 }
             ),

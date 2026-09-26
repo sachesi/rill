@@ -1,6 +1,9 @@
-use rusqlite::{Connection, Result as SqlResult};
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Value, ValueRef};
+use rusqlite::{Connection, Result as SqlResult, ToSql};
 use std::collections::HashMap;
-use std::path::Path;
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 
 use super::models::{AppSettings, SavedTorrent};
 
@@ -159,7 +162,7 @@ impl Database {
                 torrent.state,
                 torrent.downloaded as i64,
                 torrent.total as i64,
-                torrent.output_dir,
+                StoredPath(&torrent.output_dir),
                 torrent.added_at,
                 torrent.completed_at,
                 torrent.last_active,
@@ -191,7 +194,7 @@ impl Database {
                     state: row.get(3)?,
                     downloaded: row.get::<_, i64>(4)? as u64,
                     total: row.get::<_, i64>(5)? as u64,
-                    output_dir: row.get(6)?,
+                    output_dir: row.get::<_, StoredPath<PathBuf>>(6)?.0,
                     added_at: row.get(7)?,
                     completed_at: row.get(8)?,
                     last_active: row.get(9)?,
@@ -224,7 +227,7 @@ impl Database {
                 state: row.get(3)?,
                 downloaded: row.get::<_, i64>(4)? as u64,
                 total: row.get::<_, i64>(5)? as u64,
-                output_dir: row.get(6)?,
+                output_dir: row.get::<_, StoredPath<PathBuf>>(6)?.0,
                 added_at: row.get(7)?,
                 completed_at: row.get(8)?,
                 last_active: row.get(9)?,
@@ -318,11 +321,14 @@ impl Database {
     }
 
     /// Update where a torrent's content is kept
-    pub fn update_torrent_output_dir(&self, info_hash: &str, output_dir: &str) -> SqlResult<()> {
-        log::info!("Updating output dir of {info_hash} in DB: {output_dir}");
+    pub fn update_torrent_output_dir(&self, info_hash: &str, output_dir: &Path) -> SqlResult<()> {
+        log::info!(
+            "Updating output dir of {info_hash} in DB: {}",
+            output_dir.display()
+        );
         self.conn.execute(
             "UPDATE torrents SET output_dir = ?1 WHERE info_hash = ?2",
-            rusqlite::params![output_dir, info_hash],
+            rusqlite::params![StoredPath(output_dir), info_hash],
         )?;
         Ok(())
     }
@@ -342,7 +348,7 @@ impl Database {
     }
 
     /// Set setting value
-    pub fn set_setting(&self, key: &str, value: &str) -> SqlResult<()> {
+    pub fn set_setting(&self, key: &str, value: impl ToSql) -> SqlResult<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
             rusqlite::params![key, value],
@@ -352,12 +358,12 @@ impl Database {
 
     /// Load app settings from database, in one query for the whole table.
     pub fn load_settings(&self) -> AppSettings {
-        let map: HashMap<String, String> = self
+        let map: HashMap<String, Value> = self
             .conn
             .prepare("SELECT key, value FROM settings")
             .and_then(|mut stmt| {
                 stmt.query_map([], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    Ok((row.get::<_, String>(0)?, row.get::<_, Value>(1)?))
                 })?
                 .collect::<SqlResult<HashMap<_, _>>>()
             })
@@ -367,19 +373,16 @@ impl Database {
         AppSettings {
             download_folder: map
                 .get("download_folder")
-                .cloned()
-                .unwrap_or(defaults.download_folder),
+                .and_then(|value| StoredPath::column_result(value.into()).ok())
+                .map_or(defaults.download_folder, |path| path.0),
             window_width: parsed(&map, "window_width").unwrap_or(defaults.window_width),
             window_height: parsed(&map, "window_height").unwrap_or(defaults.window_height),
             window_maximized: parsed(&map, "window_maximized").unwrap_or(defaults.window_maximized),
-            log_level: map.get("log_level").cloned().unwrap_or(defaults.log_level),
+            log_level: text(&map, "log_level").unwrap_or(defaults.log_level),
             max_active_downloads: parsed(&map, "max_active_downloads")
                 .unwrap_or(defaults.max_active_downloads),
             pwp_port: parsed(&map, "pwp_port").unwrap_or(defaults.pwp_port),
-            sort_order: map
-                .get("sort_order")
-                .cloned()
-                .unwrap_or(defaults.sort_order),
+            sort_order: text(&map, "sort_order").unwrap_or(defaults.sort_order),
         }
     }
 
@@ -387,17 +390,17 @@ impl Database {
     pub fn save_settings(&self, settings: &AppSettings) -> SqlResult<()> {
         self.conn.execute_batch("BEGIN")?;
         let result = (|| {
-            self.set_setting("download_folder", &settings.download_folder)?;
-            self.set_setting("window_width", &settings.window_width.to_string())?;
-            self.set_setting("window_height", &settings.window_height.to_string())?;
-            self.set_setting("window_maximized", &settings.window_maximized.to_string())?;
-            self.set_setting("log_level", &settings.log_level)?;
+            self.set_setting("download_folder", StoredPath(&settings.download_folder))?;
+            self.set_setting("window_width", settings.window_width.to_string())?;
+            self.set_setting("window_height", settings.window_height.to_string())?;
+            self.set_setting("window_maximized", settings.window_maximized.to_string())?;
+            self.set_setting("log_level", settings.log_level.as_str())?;
             self.set_setting(
                 "max_active_downloads",
-                &settings.max_active_downloads.to_string(),
+                settings.max_active_downloads.to_string(),
             )?;
-            self.set_setting("pwp_port", &settings.pwp_port.to_string())?;
-            self.set_setting("sort_order", &settings.sort_order)?;
+            self.set_setting("pwp_port", settings.pwp_port.to_string())?;
+            self.set_setting("sort_order", settings.sort_order.as_str())?;
             Ok(())
         })();
         match result {
@@ -410,8 +413,40 @@ impl Database {
     }
 }
 
-fn parsed<T: std::str::FromStr>(map: &HashMap<String, String>, key: &str) -> Option<T> {
-    map.get(key).and_then(|v| v.parse().ok())
+fn text(map: &HashMap<String, Value>, key: &str) -> Option<String> {
+    match map.get(key)? {
+        Value::Text(text) => Some(text.clone()),
+        _ => None,
+    }
+}
+
+fn parsed<T: std::str::FromStr>(map: &HashMap<String, Value>, key: &str) -> Option<T> {
+    text(map, key).and_then(|v| v.parse().ok())
+}
+
+/// A path as the database keeps it: text when it is UTF-8, its bytes otherwise, so that a
+/// path that is not comes back as it was rather than with its bytes replaced.
+struct StoredPath<P>(P);
+
+impl<P: AsRef<Path>> ToSql for StoredPath<P> {
+    fn to_sql(&self) -> SqlResult<ToSqlOutput<'_>> {
+        let path = self.0.as_ref();
+        Ok(ToSqlOutput::Borrowed(match path.to_str() {
+            Some(text) => ValueRef::Text(text.as_bytes()),
+            None => ValueRef::Blob(path.as_os_str().as_bytes()),
+        }))
+    }
+}
+
+impl FromSql for StoredPath<PathBuf> {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value {
+            ValueRef::Text(bytes) | ValueRef::Blob(bytes) => {
+                Ok(Self(PathBuf::from(OsStr::from_bytes(bytes))))
+            }
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -595,6 +630,28 @@ mod tests {
         let loaded = db.load_settings();
         assert_eq!(loaded.pwp_port, defaults.pwp_port);
         assert_eq!(loaded.max_active_downloads, defaults.max_active_downloads);
+    }
+
+    #[test]
+    fn paths_that_are_not_utf8_come_back_as_they_were() {
+        let (db, _dir) = open("non-utf8");
+        let path = PathBuf::from(OsStr::from_bytes(b"/downloads/caf\xe9"));
+        let mut saved = torrent("aa", "paused");
+        saved.output_dir = path.clone();
+        db.save_torrent(&saved).unwrap();
+        assert_eq!(db.load_torrent("aa").unwrap().unwrap().output_dir, path);
+
+        let moved = PathBuf::from(OsStr::from_bytes(b"/elsewhere/\xff"));
+        db.update_torrent_output_dir("aa", &moved).unwrap();
+        assert_eq!(db.load_torrents().unwrap()[0].output_dir, moved);
+
+        let mut settings = db.load_settings();
+        settings.download_folder = path.clone();
+        settings.max_active_downloads = 5;
+        db.save_settings(&settings).unwrap();
+        let loaded = db.load_settings();
+        assert_eq!(loaded.download_folder, path);
+        assert_eq!(loaded.max_active_downloads, 5);
     }
 
     #[test]

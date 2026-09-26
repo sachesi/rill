@@ -516,16 +516,14 @@ impl RillWindow {
     /// Opens the dialog that adds a torrent, set up by `setup`, once the download folder it
     /// offers has been read.
     fn open_add_dialog(&self, setup: impl FnOnce(&AddTorrentDialog) + 'static) {
-        let folder = self
-            .storage()
-            .query(|s| s.load_settings().download_folder_path());
+        let folder = self.storage().query(|s| s.load_settings().download_folder);
         glib::spawn_future_local(glib::clone!(
             #[weak(rename_to = window)]
             self,
             async move {
                 let folder = folder
                     .await
-                    .unwrap_or_else(|_| AppSettings::default().download_folder_path());
+                    .unwrap_or_else(|_| AppSettings::default().download_folder);
                 let dialog = AddTorrentDialog::new(&window, folder);
                 setup(&dialog);
                 dialog.present(Some(&window));
@@ -856,7 +854,7 @@ impl RillWindow {
         }
 
         self.engine().set_output_dir(hash, folder.clone());
-        let (key, dir) = (hash.to_string(), folder.to_string_lossy().into_owned());
+        let (key, dir) = (hash.to_string(), folder.clone());
         self.storage().execute(move |s| {
             if let Err(e) = s.update_torrent_output_dir(&key, &dir) {
                 log::warn!("{e}");
@@ -946,8 +944,8 @@ impl RillWindow {
                         .await
                         .ok()
                         .flatten();
-                    let path = record
-                        .and_then(|t| torrent_paths::content_path(&t.uri, &t.output_dir_path()));
+                    let path =
+                        record.and_then(|t| torrent_paths::content_path(&t.uri, &t.output_dir));
                     match path {
                         Some(path) => {
                             let target = path.clone();
@@ -1304,7 +1302,7 @@ impl RillWindow {
                     torrent.info_hash.clone(),
                     torrent.name.clone(),
                     state,
-                    torrent.output_dir_path(),
+                    torrent.output_dir.clone(),
                     torrent.uri.clone(),
                     torrent.sequential,
                 )
@@ -1314,7 +1312,7 @@ impl RillWindow {
                 torrent.info_hash.clone(),
                 torrent.name.clone(),
                 torrent.uri.clone(),
-                torrent.output_dir_path(),
+                torrent.output_dir.clone(),
                 torrent.sequential,
                 tx.clone(),
             );

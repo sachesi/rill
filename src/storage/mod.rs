@@ -6,7 +6,7 @@ pub mod models;
 use db::Database;
 pub use models::{AppSettings, SavedTorrent};
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -198,7 +198,7 @@ impl Storage {
     pub fn update_torrent_output_dir(
         &self,
         info_hash: &str,
-        output_dir: &str,
+        output_dir: &Path,
     ) -> Result<(), String> {
         self.db()
             .update_torrent_output_dir(info_hash, output_dir)
