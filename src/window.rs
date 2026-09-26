@@ -1152,7 +1152,9 @@ impl RillWindow {
         if previous.is_some_and(|previous| previous.name != update.name) {
             self.rename(&update.info_hash, &update.name);
         }
-        if let Some(dialog) = imp.info_dialogs.borrow().get(&update.info_hash) {
+        // Out of the map first: a dialog that closes on an update takes itself out of it.
+        let dialog = imp.info_dialogs.borrow().get(&update.info_hash).cloned();
+        if let Some(dialog) = dialog {
             dialog.apply_update(&update);
         }
         self.persist(&update);
