@@ -354,7 +354,7 @@ fn magnet_name(uri: &str) -> String {
 ///
 /// mtorrent names the download folder after the file's stem, so when the torrent's own
 /// name is different, the file is copied to `data_dir/torrents/<name>.torrent` and that
-/// copy is used instead.
+/// copy is used instead. So is a file whose path is not UTF-8, which mtorrent cannot open.
 fn prepare_torrent_file(file: &Path, data_dir: &Path) -> Option<(String, String, PathBuf)> {
     let meta = Metainfo::from_file(file).ok()?;
     let hash = crate::engine::hex(meta.info_hash());
@@ -396,7 +396,7 @@ fn prepare_torrent_file(file: &Path, data_dir: &Path) -> Option<(String, String,
         safe
     };
 
-    if file.file_stem().and_then(|s| s.to_str()) == Some(safe.as_str()) {
+    if file.file_stem().and_then(|s| s.to_str()) == Some(safe.as_str()) && file.to_str().is_some() {
         return Some((hash, real_name.to_string(), file.to_path_buf()));
     }
     let dir = data_dir.join("torrents");
