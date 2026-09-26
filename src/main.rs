@@ -80,8 +80,8 @@ fn main() -> glib::ExitCode {
 /// Opens the database and starts the engine: the runtimes mtorrent needs, the DHT node,
 /// and the torrents saved from the last session.
 fn start_session() -> Result<Session, String> {
-    let data_dir = dirs_next::data_local_dir()
-        .or_else(dirs_next::data_dir)
+    let data_dir = dirs::data_local_dir()
+        .or_else(dirs::data_dir)
         .ok_or("No data directory; is HOME set?")?
         .join("rill");
     std::fs::create_dir_all(&data_dir)

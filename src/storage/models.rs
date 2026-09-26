@@ -78,8 +78,8 @@ impl Default for AppSettings {
 }
 
 pub fn default_download_folder() -> PathBuf {
-    dirs_next::download_dir()
-        .or_else(dirs_next::home_dir)
+    dirs::download_dir()
+        .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
