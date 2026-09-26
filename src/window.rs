@@ -526,6 +526,16 @@ impl RillWindow {
         sequential: bool,
         start_now: bool,
     ) {
+        // Added again, from the same link or file: it keeps the folder its content is in and
+        // its settings, rather than start over as a second copy the database knows nothing of.
+        let known = self.imp().rows.borrow().contains_key(&hash);
+        if known {
+            log::info!("Torrent {hash} is already in the list");
+            if start_now {
+                self.resume_torrent(&hash);
+            }
+            return;
+        }
         if start_now {
             self.engine()
                 .start(hash.clone(), name, uri, dir, sequential, self.sender());
