@@ -116,7 +116,8 @@ impl Harness {
             storage_runtime.handle().clone(),
             dht_cmds,
             pwp_port,
-        );
+        )
+        .unwrap();
         let (tx, events) = async_channel::unbounded();
         Self {
             engine,
