@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use async_channel::Sender;
@@ -23,8 +23,8 @@ pub struct GtkListener {
     output_dir: PathBuf,
     last_downloaded: u64,
     last_time: Option<std::time::Instant>,
-    downloaded_bytes: Arc<Mutex<u64>>,
-    total_bytes: Arc<Mutex<u64>>,
+    downloaded_bytes: Arc<std::sync::atomic::AtomicU64>,
+    total_bytes: Arc<std::sync::atomic::AtomicU64>,
     total_pieces: usize,
     downloaded_pieces: usize,
     sequential: Arc<std::sync::atomic::AtomicBool>,
@@ -48,8 +48,8 @@ impl GtkListener {
         name: String,
         uri: String,
         output_dir: PathBuf,
-        downloaded_bytes: Arc<Mutex<u64>>,
-        total_bytes: Arc<Mutex<u64>>,
+        downloaded_bytes: Arc<std::sync::atomic::AtomicU64>,
+        total_bytes: Arc<std::sync::atomic::AtomicU64>,
         sequential: Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
         Self {
@@ -212,12 +212,10 @@ impl StateListener for GtkListener {
         let total = snapshot.bytes.total as u64;
         let peers = snapshot.peers.len();
 
-        if let Ok(mut dl) = self.downloaded_bytes.lock() {
-            *dl = downloaded;
-        }
-        if let Ok(mut tot) = self.total_bytes.lock() {
-            *tot = total;
-        }
+        self.downloaded_bytes
+            .store(downloaded, std::sync::atomic::Ordering::Relaxed);
+        self.total_bytes
+            .store(total, std::sync::atomic::Ordering::Relaxed);
 
         let now = std::time::Instant::now();
         let speed_down = if let Some(last) = self.last_time {
@@ -320,7 +318,7 @@ mod tests {
 
     /// A listener as a torrent task has it, with the stop flag the engine would set.
     fn listener(stop: Option<Stop>, tx: Sender<UiEvent>) -> (GtkListener, Arc<()>) {
-        use std::sync::atomic::{AtomicBool, AtomicU8};
+        use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64};
 
         let canceller = Arc::new(());
         let listener = GtkListener::new(
@@ -331,8 +329,8 @@ mod tests {
             "Name".into(),
             "magnet:?xt=urn:btih:0123456789012345678901234567890123456789".into(),
             PathBuf::from("/tmp"),
-            Arc::new(Mutex::new(0)),
-            Arc::new(Mutex::new(0)),
+            Arc::new(AtomicU64::new(0)),
+            Arc::new(AtomicU64::new(0)),
             Arc::new(AtomicBool::new(false)),
         );
         (listener, canceller)

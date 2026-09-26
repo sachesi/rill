@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_channel::Sender;
@@ -218,8 +218,8 @@ struct Shared {
 /// `saved`; the tasks themselves run on a thread of the engine's own.
 #[derive(Debug)]
 pub struct TorrentEngine {
-    active: Arc<Mutex<HashMap<String, TorrentEntry>>>,
-    saved: Arc<Mutex<HashMap<String, TorrentEntry>>>,
+    active: Mutex<HashMap<String, TorrentEntry>>,
+    saved: Mutex<HashMap<String, TorrentEntry>>,
     cmd_tx: tokio::sync::mpsc::Sender<StartCmd>,
     config_dir: PathBuf,
     /// The listening port setting: where torrents started from now on count up from, or 0
@@ -278,8 +278,8 @@ impl TorrentEngine {
         });
 
         Self {
-            active: Arc::new(Mutex::new(HashMap::new())),
-            saved: Arc::new(Mutex::new(HashMap::new())),
+            active: Mutex::new(HashMap::new()),
+            saved: Mutex::new(HashMap::new()),
             cmd_tx,
             config_dir,
             pwp_port: AtomicU16::new(pwp_port),
@@ -661,8 +661,8 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
     })
     .await;
 
-    let downloaded_bytes = Arc::new(Mutex::new(0u64));
-    let total_bytes = Arc::new(Mutex::new(0u64));
+    let downloaded_bytes = Arc::new(AtomicU64::new(0));
+    let total_bytes = Arc::new(AtomicU64::new(0));
 
     let listener = GtkListener::new(
         Arc::downgrade(&canceller),
@@ -727,8 +727,8 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
         }
     } else if matches!(stop_reason, Stop::Pause) {
         let update = UiUpdate {
-            downloaded: *lock_recover(&downloaded_bytes, "downloaded bytes"),
-            total: *lock_recover(&total_bytes, "total bytes"),
+            downloaded: downloaded_bytes.load(Ordering::Relaxed),
+            total: total_bytes.load(Ordering::Relaxed),
             // No name: the one the window has may be newer than the one this run began
             // with.
             ..UiUpdate::idle(
