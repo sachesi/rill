@@ -161,10 +161,9 @@ fn raise_open_file_limit() {
         );
         return;
     }
-    let wanted = limit.rlim_max.min(OPEN_FILES_CEILING);
-    if limit.rlim_cur >= wanted {
+    let Some(wanted) = raised_soft_limit(&limit) else {
         return;
-    }
+    };
     let previous = limit.rlim_cur;
     limit.rlim_cur = wanted;
     // SAFETY: `limit` is a valid rlimit, its soft value no higher than its hard one.
@@ -176,6 +175,12 @@ fn raise_open_file_limit() {
             std::io::Error::last_os_error()
         );
     }
+}
+
+/// The soft limit on open files to raise `limit` to, or `None` when it is as high as it goes.
+fn raised_soft_limit(limit: &libc::rlimit) -> Option<libc::rlim_t> {
+    let wanted = limit.rlim_max.min(OPEN_FILES_CEILING);
+    (limit.rlim_cur < wanted).then_some(wanted)
 }
 
 /// The UDP port for the DHT node: the usual 6881, or the next free one when another client
@@ -300,35 +305,20 @@ mod tests {
 
     #[test]
     fn the_open_file_limit_is_raised_to_the_hard_one() {
-        let read = || {
-            let mut limit = libc::rlimit {
-                rlim_cur: 0,
-                rlim_max: 0,
-            };
-            assert_eq!(
-                unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) },
-                0
-            );
-            limit
-        };
-        let original = read();
-        let wanted = original.rlim_max.min(OPEN_FILES_CEILING);
-        // A soft limit as a desktop session sets it, though never below what the other
-        // tests running alongside have open.
-        let low = libc::rlimit {
-            rlim_cur: 1024.min(wanted),
-            rlim_max: original.rlim_max,
-        };
-        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &low) }, 0);
-
-        raise_open_file_limit();
-        let raised = read();
+        // Worked out rather than set: the limit is the whole process's, and the other tests
+        // run alongside.
+        let limit = |rlim_cur, rlim_max| libc::rlimit { rlim_cur, rlim_max };
+        // A desktop session's soft limit, under the hard limit systemd sets or under none.
+        assert_eq!(raised_soft_limit(&limit(1024, 524_288)), Some(524_288));
         assert_eq!(
-            unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &original) },
-            0
+            raised_soft_limit(&limit(1024, libc::RLIM_INFINITY)),
+            Some(OPEN_FILES_CEILING)
         );
-        assert_eq!(raised.rlim_cur, wanted);
-        assert_eq!(raised.rlim_max, original.rlim_max);
+        assert_eq!(raised_soft_limit(&limit(4096, 4096)), None);
+        assert_eq!(
+            raised_soft_limit(&limit(OPEN_FILES_CEILING, libc::RLIM_INFINITY)),
+            None
+        );
     }
 
     #[test]
