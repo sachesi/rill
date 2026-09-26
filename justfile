@@ -19,6 +19,7 @@ release := "target/release"
 pot_dir := "target/pot"
 check_dir := "target/check"
 version := `sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml`
+rust_version := `sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml`
 
 default:
     @just --list
@@ -48,6 +49,10 @@ check:
 # Unit tests.
 test:
     cargo test
+
+# Build with the oldest Rust Cargo.toml allows, a toolchain rustup installs.
+msrv:
+    cargo +{{rust_version}} check --all-targets
 
 # Regenerate po/rill.pot from the Rust sources, the Blueprint files, the desktop entry and
 # the metainfo.

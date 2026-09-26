@@ -16,7 +16,7 @@ Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.
 Source1:        %{url}/releases/download/v%{version}/%{name}-%{version}-vendor.tar.xz
 
 BuildRequires:  cargo
-BuildRequires:  rust >= 1.92
+BuildRequires:  rust >= 1.95
 BuildRequires:  gcc
 BuildRequires:  blueprint-compiler
 BuildRequires:  desktop-file-utils

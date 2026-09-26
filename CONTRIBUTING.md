@@ -56,6 +56,7 @@ from what the window keeps in memory and reads nothing.
     just run [FILE|MAGNET]   # debug build, translated from po/
     just check               # fmt, clippy -D warnings, blueprint, validators, catalogues
     just test                # the unit tests
+    just msrv                # the build with the oldest Rust Rill supports, from rustup
     cargo deny check         # advisories, licences and sources of the dependencies
 
 How much is logged is set in Preferences; `RUST_LOG` narrows it further, per module if
