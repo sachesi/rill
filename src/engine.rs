@@ -235,7 +235,7 @@ impl TorrentEngine {
         storage_handle: tokio::runtime::Handle,
         dht_sink: dht::CommandSink,
         pwp_port: u16,
-    ) -> Self {
+    ) -> std::io::Result<Self> {
         log::info!("Creating torrent engine, config_dir: {:?}", config_dir);
         // Bounded so a wedged recv loop applies backpressure instead of growing
         // the queue without limit. The loop drains commands promptly in normal
@@ -250,40 +250,56 @@ impl TorrentEngine {
             storage_runtime: storage_handle,
             dht: dht_sink,
         };
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build_local(Default::default())
-                .unwrap();
+        // The runtime is built on the thread that drives it, and says whether it could be.
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::Builder::new()
+            .name("engine".into())
+            .spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build_local(Default::default())
+                {
+                    Ok(rt) => {
+                        ready_tx.send(Ok(())).ok();
+                        rt
+                    }
+                    Err(e) => {
+                        ready_tx.send(Err(e)).ok();
+                        return;
+                    }
+                };
 
-            rt.block_on(async {
-                // The last run of each torrent. A new run waits for the one before
-                // it to end, which a pause or restart has already asked of it, so
-                // that the two never share the torrent's files.
-                let mut runs: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
-                while let Some(cmd) = cmd_rx.recv().await {
-                    runs.retain(|_, run| !run.is_finished());
-                    let previous = runs.remove(&cmd.info_hash);
-                    let hash = cmd.info_hash.clone();
-                    let shared = shared.clone();
-                    let run = tokio::task::spawn_local(async move {
-                        if let Some(previous) = previous {
-                            let _ = previous.await;
-                        }
-                        run_torrent(cmd, shared).await
-                    });
-                    runs.insert(hash, run);
-                }
-            });
-        });
+                rt.block_on(async {
+                    // The last run of each torrent. A new run waits for the one before
+                    // it to end, which a pause or restart has already asked of it, so
+                    // that the two never share the torrent's files.
+                    let mut runs: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
+                    while let Some(cmd) = cmd_rx.recv().await {
+                        runs.retain(|_, run| !run.is_finished());
+                        let previous = runs.remove(&cmd.info_hash);
+                        let hash = cmd.info_hash.clone();
+                        let shared = shared.clone();
+                        let run = tokio::task::spawn_local(async move {
+                            if let Some(previous) = previous {
+                                let _ = previous.await;
+                            }
+                            run_torrent(cmd, shared).await
+                        });
+                        runs.insert(hash, run);
+                    }
+                });
+            })?;
+        ready_rx
+            .recv()
+            .map_err(|_| std::io::Error::other("the engine thread exited during startup"))??;
 
-        Self {
+        Ok(Self {
             active: Mutex::new(HashMap::new()),
             saved: Mutex::new(HashMap::new()),
             cmd_tx,
             config_dir,
             pwp_port: AtomicU16::new(pwp_port),
-        }
+        })
     }
 
     /// Starts the torrent `uri` names, known by its `info_hash`, so that the same content

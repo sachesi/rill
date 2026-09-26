@@ -111,14 +111,17 @@ fn start_session() -> Result<Session, String> {
     })
     .map_err(|e| format!("Could not start the DHT node: {e}"))?;
 
-    let engine = Rc::new(TorrentEngine::new(
-        PeerId::generate_new(),
-        data_dir,
-        pwp_handle,
-        storage_runtime.handle().clone(),
-        dht_cmds,
-        settings.pwp_port,
-    ));
+    let engine = Rc::new(
+        TorrentEngine::new(
+            PeerId::generate_new(),
+            data_dir,
+            pwp_handle,
+            storage_runtime.handle().clone(),
+            dht_cmds,
+            settings.pwp_port,
+        )
+        .map_err(|e| format!("Could not start the engine: {e}"))?,
+    );
 
     let mut saved = storage.load_torrents().unwrap_or_else(|e| {
         log::warn!("Failed to load torrents: {e}");
