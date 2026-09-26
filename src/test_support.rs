@@ -1,5 +1,5 @@
 //! What the tests need around the engine: a scratch directory, a .torrent file made up on the
-//! spot, and an engine with its runtimes, DHT node and database.
+//! spot, and an engine with its runtimes and DHT node.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -10,7 +10,6 @@ use mtorrent::utils::re_exports::mtorrent_utils::benc::Element;
 use mtorrent::utils::re_exports::mtorrent_utils::peer_id::PeerId;
 
 use crate::engine::{TorrentEngine, UiEvent, UiUpdate};
-use crate::storage::Storage;
 
 /// A directory of its own for one test, removed with it.
 pub struct ScratchDir(PathBuf);
@@ -81,8 +80,8 @@ impl TestTorrent {
     }
 }
 
-/// An engine as Rill runs it, with a database, runtimes and a DHT node that knows no one,
-/// in a directory of its own.
+/// An engine as Rill runs it, with runtimes and a DHT node that knows no one, in a directory
+/// of its own.
 pub struct Harness {
     pub engine: TorrentEngine,
     pub tx: async_channel::Sender<UiEvent>,
@@ -97,11 +96,6 @@ impl Harness {
     /// `pwp_port` is the listening port setting: 0 lets mtorrent derive one per torrent.
     pub fn new(name: &str, pwp_port: u16) -> Self {
         let dir = ScratchDir::new(name);
-        let storage = Storage::open(dir.path().join("torrents.db")).unwrap();
-        let mut settings = storage.load_settings();
-        settings.pwp_port = pwp_port;
-        storage.save_settings(&settings).unwrap();
-
         let pwp = crate::spawn_local_runtime("test-pwp-runtime").unwrap();
         let storage_runtime = crate::storage_runtime().unwrap();
         let (dht, dht_cmds) =
@@ -121,7 +115,7 @@ impl Harness {
             pwp,
             storage_runtime.handle().clone(),
             dht_cmds,
-            storage,
+            pwp_port,
         );
         let (tx, events) = async_channel::unbounded();
         Self {

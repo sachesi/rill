@@ -177,7 +177,12 @@ impl RillApplication {
         let (Some(window), Some(session)) = (self.window(), self.imp().session.get()) else {
             return;
         };
-        PreferencesDialog::new(&window, session.storage.clone()).present(Some(&window));
+        let storage = session.storage.clone();
+        let settings = storage.query(|s| s.load_settings());
+        glib::spawn_future_local(async move {
+            let settings = settings.await.unwrap_or_default();
+            PreferencesDialog::new(&window, storage, &settings).present(Some(&window));
+        });
     }
 
     /// The tray runs on a thread of its own; its commands are handled here, on the main
