@@ -229,17 +229,21 @@ impl AddTorrentDialog {
             // Refuse what the engine cannot parse here, rather than let it become a
             // transfer that never starts.
             let sanitized = crate::engine::sanitize_magnet_dn(&uri);
-            if !uri.starts_with("magnet:") || MagnetLink::from_str(&sanitized).is_err() {
+            let magnet = MagnetLink::from_str(&sanitized)
+                .ok()
+                .filter(|_| uri.starts_with("magnet:"));
+            let Some(magnet) = magnet else {
                 imp.magnet_row.add_css_class("error");
                 imp.magnet_error
                     .set_label(&gettext("This is not a magnet link"));
                 imp.magnet_error.set_visible(true);
                 return;
-            }
+            };
             self.close();
+            let hash = crate::engine::hex(magnet.info_hash());
             let name = magnet_name(&uri);
             let uri = crate::engine::name_nameless_magnet(&uri);
-            window.start_torrent(name, uri, folder, sequential, start_now);
+            window.start_torrent(hash, name, uri, folder, sequential, start_now);
             return;
         };
 
@@ -252,7 +256,8 @@ impl AddTorrentDialog {
                 .ok()
                 .flatten();
             match resolved {
-                Some((name, path)) => window.start_torrent(
+                Some((hash, name, path)) => window.start_torrent(
+                    hash,
                     name,
                     path.to_string_lossy().into_owned(),
                     folder,
@@ -301,14 +306,15 @@ fn magnet_name(uri: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Reads a .torrent file and returns its name and the path to give the engine, or
-/// `None` when it is not a torrent.
+/// Reads a .torrent file and returns its info hash, its name and the path to give the
+/// engine, or `None` when it is not a torrent.
 ///
 /// mtorrent names the download folder after the file's stem, so when the torrent's own
 /// name is different, the file is copied to `data_dir/torrents/<name>.torrent` and that
 /// copy is used instead.
-fn prepare_torrent_file(file: &Path, data_dir: &Path) -> Option<(String, PathBuf)> {
+fn prepare_torrent_file(file: &Path, data_dir: &Path) -> Option<(String, String, PathBuf)> {
     let meta = Metainfo::from_file(file).ok()?;
+    let hash = crate::engine::hex(meta.info_hash());
     let fallback = || {
         file.file_stem()
             .unwrap_or_default()
@@ -316,7 +322,7 @@ fn prepare_torrent_file(file: &Path, data_dir: &Path) -> Option<(String, PathBuf
             .into_owned()
     };
     let Some(real_name) = meta.name().filter(|n| !n.is_empty()) else {
-        return Some((fallback(), file.to_path_buf()));
+        return Some((hash, fallback(), file.to_path_buf()));
     };
 
     // A single-file torrent is named after its file ("film.mkv"); the folder is not.
@@ -348,14 +354,14 @@ fn prepare_torrent_file(file: &Path, data_dir: &Path) -> Option<(String, PathBuf
     };
 
     if file.file_stem().and_then(|s| s.to_str()) == Some(safe.as_str()) {
-        return Some((real_name.to_string(), file.to_path_buf()));
+        return Some((hash, real_name.to_string(), file.to_path_buf()));
     }
     let dir = data_dir.join("torrents");
     let copy = dir.join(format!("{safe}.torrent"));
     match std::fs::create_dir_all(&dir).and_then(|()| std::fs::copy(file, &copy)) {
         Ok(_) => {
             log::info!("Copied {} to {}", file.display(), copy.display());
-            Some((real_name.to_string(), copy))
+            Some((hash, real_name.to_string(), copy))
         }
         Err(e) => {
             log::warn!(
@@ -363,7 +369,7 @@ fn prepare_torrent_file(file: &Path, data_dir: &Path) -> Option<(String, PathBuf
                 file.display(),
                 copy.display()
             );
-            Some((real_name.to_string(), file.to_path_buf()))
+            Some((hash, real_name.to_string(), file.to_path_buf()))
         }
     }
 }

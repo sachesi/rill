@@ -511,9 +511,15 @@ mod tests {
         // Left as it was, the progress file would have the torrent report every byte: the
         // engine corrects it before the run.
         let uri = torrent.metainfo_path.to_string_lossy().into_owned();
-        let hash = h
-            .engine
-            .start(String::new(), uri, output_dir, false, h.tx.clone());
+        let hash = torrent.hex_hash();
+        h.engine.start(
+            hash.clone(),
+            String::new(),
+            uri,
+            output_dir,
+            false,
+            h.tx.clone(),
+        );
         let update = h.wait_for_update(&hash, std::time::Duration::from_secs(20), |u| u.total > 0);
         assert_eq!(update.downloaded, 0);
     }
