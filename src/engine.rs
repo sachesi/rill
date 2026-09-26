@@ -318,13 +318,26 @@ impl TorrentEngine {
             sequential
         );
 
-        let torrent = TorrentEntry::new(name, uri, output_dir, sequential, ui_tx.clone());
+        // One held paused runs on from where it is, in its own folder, rather than stay
+        // behind as a second entry of the same torrent.
+        let paused = lock_recover(&self.saved, "saved map").remove(&info_hash);
+        let was_paused = paused.is_some();
+        let torrent = match paused {
+            Some(torrent) => {
+                torrent.sequential.store(sequential, Ordering::Relaxed);
+                torrent
+            }
+            None => TorrentEntry::new(name, uri, output_dir, sequential, ui_tx.clone()),
+        };
         // Immediately notify UI of the new downloading torrent
         let update = torrent.idle_update(&info_hash, TorrentUiState::Downloading);
         if let Err(err) = self.launch(&info_hash, torrent, &mut map) {
-            let (_, e) = *err;
+            let (torrent, e) = *err;
             drop(map);
             log::error!("Failed to queue torrent start {}: {}", info_hash, e);
+            if was_paused {
+                lock_recover(&self.saved, "saved map").insert(info_hash.clone(), torrent);
+            }
             let _ = ui_tx.try_send(UiEvent::Finished {
                 info_hash,
                 error: Some("Engine unavailable".into()),
@@ -998,6 +1011,35 @@ mod tests {
 
         h.engine.toggle(&hash);
         assert!(h.engine.is_active(&hash));
+    }
+
+    #[test]
+    fn starting_a_paused_torrent_resumes_it_where_it_was() {
+        let h = Harness::new("engine-start-paused", 0);
+        let uri = magnet_to_nowhere(10);
+        let hash = info_hash(&uri).unwrap();
+        h.engine.add_paused(
+            hash.clone(),
+            "Paused".into(),
+            uri.clone(),
+            h.output_dir(),
+            false,
+            h.tx.clone(),
+        );
+        let elsewhere = h.output_dir().join("elsewhere");
+        h.engine.start(
+            hash.clone(),
+            "Paused".into(),
+            uri,
+            elsewhere,
+            false,
+            h.tx.clone(),
+        );
+
+        assert!(h.engine.is_active(&hash));
+        assert!(!lock_recover(&h.engine.saved, "saved map").contains_key(&hash));
+        let active = lock_recover(&h.engine.active, "active map");
+        assert_eq!(active[&hash].output_dir, h.output_dir());
     }
 
     #[test]
