@@ -1,5 +1,5 @@
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Value, ValueRef};
-use rusqlite::{Connection, Result as SqlResult, ToSql};
+use rusqlite::{Connection, OptionalExtension, Result as SqlResult, ToSql};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -47,7 +47,7 @@ impl Database {
             .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| {
                 row.get(0)
             })
-            .ok();
+            .optional()?;
 
         if let Some(version) = current_version {
             log::debug!("Database schema version: {}", version);
@@ -652,6 +652,25 @@ mod tests {
         let loaded = db.load_settings();
         assert_eq!(loaded.download_folder, path);
         assert_eq!(loaded.max_active_downloads, 5);
+    }
+
+    #[test]
+    fn an_unreadable_schema_version_is_reported_as_it_is() {
+        let dir = crate::test_support::ScratchDir::new("bad-version");
+        let path = dir.path().join("torrents.db");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE schema_version (version);
+                 INSERT INTO schema_version VALUES ('x');
+                 CREATE TABLE torrents (info_hash TEXT PRIMARY KEY);",
+            )
+            .unwrap();
+        let err = Database::open(&path).unwrap_err();
+        assert!(
+            matches!(err, rusqlite::Error::InvalidColumnType(..)),
+            "{err}"
+        );
     }
 
     #[test]
