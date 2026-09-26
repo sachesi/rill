@@ -804,11 +804,31 @@ fn lock_recover<'a, T>(m: &'a Mutex<T>, what: &str) -> MutexGuard<'a, T> {
     })
 }
 
-fn hash_uri(uri: &str) -> String {
+/// The identity of a torrent whose URI names neither a magnet link nor a readable
+/// `.torrent` file: a hash of the URI text.
+pub(crate) fn hash_uri(uri: &str) -> String {
     use sha1::{Digest, Sha1};
     let mut hasher = Sha1::new();
     hasher.update(uri.as_bytes());
     hex(&hasher.finalize().into())
+}
+
+/// The BitTorrent info hash (hex) of the magnet link or `.torrent` file `uri` names, or
+/// `None` when it names neither. Reads the file: keep it off the main thread.
+pub(crate) fn info_hash(uri: &str) -> Option<String> {
+    use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
+    use std::str::FromStr;
+
+    let path = std::path::Path::new(uri);
+    if path.is_file() {
+        Metainfo::from_file(path)
+            .ok()
+            .map(|meta| hex(meta.info_hash()))
+    } else {
+        MagnetLink::from_str(uri)
+            .ok()
+            .map(|magnet| hex(magnet.info_hash()))
+    }
 }
 
 /// Canonical identity for a torrent: the real BitTorrent info hash (hex) when
@@ -816,22 +836,11 @@ fn hash_uri(uri: &str) -> String {
 /// added via magnet and via file maps to one entry instead of two concurrent
 /// downloads. Falls back to hashing the URI text when nothing parses.
 pub(crate) fn torrent_id(uri: &str) -> String {
-    use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
-    use std::str::FromStr;
-
-    let path = std::path::Path::new(uri);
-    if path.is_file() {
-        if let Ok(meta) = Metainfo::from_file(path) {
-            return hex(meta.info_hash());
-        }
-    } else if let Ok(magnet) = MagnetLink::from_str(uri) {
-        return hex(magnet.info_hash());
-    }
-    hash_uri(uri)
+    info_hash(uri).unwrap_or_else(|| hash_uri(uri))
 }
 
 /// An info hash in lowercase hex.
-fn hex(hash: &[u8; 20]) -> String {
+pub(crate) fn hex(hash: &[u8; 20]) -> String {
     use std::fmt::Write;
 
     hash.iter().fold(String::with_capacity(40), |mut s, b| {
