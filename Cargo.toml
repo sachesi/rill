@@ -12,11 +12,11 @@ readme = "README.md"
 mtorrent = "0.7.2"
 adw = { package = "libadwaita", version = "0.9", features = ["v1_8"] }
 gtk = { package = "gtk4", version = "0.11", features = ["v4_20"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time", "io-util", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time", "net"] }
 async-channel = "2"
 log = "0.4"
 env_logger = "0.11"
-dirs-next = "2"
+dirs = "6"
 urlencoding = "2"
 rusqlite = { version = "0.40", features = ["bundled"] }
 sha1 = "0.11"
