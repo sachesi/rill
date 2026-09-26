@@ -739,14 +739,9 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
 /// the metainfo write fails with ENOENT. Non-magnet URIs are returned
 /// unchanged.
 pub(crate) fn sanitize_magnet_dn(uri: &str) -> String {
-    let Some(dn_pos) = uri.find("dn=") else {
+    let Some((value_start, value_end)) = dn_value(uri) else {
         return uri.to_string();
     };
-    let value_start = dn_pos + 3;
-    let value_end = uri[value_start..]
-        .find('&')
-        .map(|i| value_start + i)
-        .unwrap_or(uri.len());
 
     let raw = &uri[value_start..value_end];
     let decoded = urlencoding::decode(raw)
@@ -765,6 +760,21 @@ pub(crate) fn sanitize_magnet_dn(uri: &str) -> String {
     }
     let encoded = urlencoding::encode(&cleaned);
     format!("{}{}{}", &uri[..value_start], encoded, &uri[value_end..])
+}
+
+/// Where the value of a magnet link's first `dn` parameter starts and ends.
+fn dn_value(uri: &str) -> Option<(usize, usize)> {
+    let mut start = uri.strip_prefix("magnet:")?.find('?')? + "magnet:?".len();
+    loop {
+        let end = uri[start..].find('&').map_or(uri.len(), |i| start + i);
+        if uri[start..end].starts_with("dn=") {
+            return Some((start + "dn=".len(), end));
+        }
+        if end == uri.len() {
+            return None;
+        }
+        start = end + 1;
+    }
 }
 
 /// A torrent name as a single file name: separators and control characters become `_`,
@@ -863,6 +873,7 @@ mod tests {
 
     use super::{
         TorrentUiState, hash_uri, info_hash, listening_port, lock_recover, name_nameless_magnet,
+        sanitize_magnet_dn,
     };
     use crate::test_support::{Harness, TestTorrent, closed_addr};
 
@@ -1082,6 +1093,26 @@ mod tests {
         assert_eq!(a, b);
         assert_ne!(a, c);
         assert_eq!(a.len(), 40);
+    }
+
+    #[test]
+    fn only_the_name_parameter_of_a_magnet_link_is_cleaned() {
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        assert_eq!(
+            sanitize_magnet_dn(&format!("magnet:?xt=urn:btih:{hex}&dn=Show%20%2F%20S1")),
+            format!("magnet:?xt=urn:btih:{hex}&dn=Show%20_%20S1")
+        );
+        assert_eq!(
+            sanitize_magnet_dn(&format!("magnet:?dn=a%2Fb&xt=urn:btih:{hex}")),
+            format!("magnet:?dn=a_b&xt=urn:btih:{hex}")
+        );
+        // A parameter whose name only ends in dn is not the name, nor is a path.
+        let other = format!("magnet:?xt=urn:btih:{hex}&xdn=a%2Fb&dn=Show");
+        assert_eq!(sanitize_magnet_dn(&other), other);
+        assert_eq!(
+            sanitize_magnet_dn("/tmp/dn=a/b.torrent"),
+            "/tmp/dn=a/b.torrent"
+        );
     }
 
     #[test]
