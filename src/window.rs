@@ -515,23 +515,24 @@ impl RillWindow {
         dialog.present(Some(self));
     }
 
-    /// Hands a torrent to the engine, running or paused. The row appears with the
-    /// engine's first update.
+    /// Hands a torrent, known by `hash`, to the engine, running or paused. The row
+    /// appears with the engine's first update.
     pub fn start_torrent(
         &self,
+        hash: String,
         name: String,
         uri: String,
         dir: PathBuf,
         sequential: bool,
         start_now: bool,
     ) {
-        let hash = if start_now {
+        if start_now {
             self.engine()
-                .start(name, uri, dir, sequential, self.sender())
+                .start(hash.clone(), name, uri, dir, sequential, self.sender());
         } else {
             self.engine()
-                .add_paused(name, uri, dir, sequential, self.sender())
-        };
+                .add_paused(hash.clone(), name, uri, dir, sequential, self.sender());
+        }
         // A torrent deleted earlier in this session may come back.
         let mut torrents = self.imp().torrents.borrow_mut();
         torrents.undelete(&hash);
@@ -1266,6 +1267,7 @@ impl RillWindow {
             };
             // Registered as paused, so that resuming starts the task.
             self.engine().add_paused_silent(
+                torrent.info_hash.clone(),
                 torrent.name.clone(),
                 torrent.uri.clone(),
                 torrent.output_dir_path(),

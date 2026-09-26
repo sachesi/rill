@@ -284,15 +284,17 @@ impl TorrentEngine {
         }
     }
 
+    /// Starts the torrent `uri` names, known by its `info_hash`, so that the same content
+    /// added from a magnet link and from a file is one torrent.
     pub fn start(
         &self,
+        info_hash: String,
         name: String,
         uri: String,
         output_dir: PathBuf,
         sequential: bool,
         ui_tx: Sender<UiEvent>,
-    ) -> String {
-        let info_hash = torrent_id(&uri);
+    ) {
         let mut map = lock_recover(&self.active, "active map");
 
         if let Some(existing) = map.get(&info_hash) {
@@ -304,7 +306,7 @@ impl TorrentEngine {
             let _ = ui_tx.try_send(UiEvent::Update(
                 existing.idle_update(&info_hash, TorrentUiState::Downloading),
             ));
-            return info_hash;
+            return;
         }
 
         log::info!(
@@ -322,27 +324,34 @@ impl TorrentEngine {
             drop(map);
             log::error!("Failed to queue torrent start {}: {}", info_hash, e);
             let _ = ui_tx.try_send(UiEvent::Finished {
-                info_hash: info_hash.clone(),
+                info_hash,
                 error: Some("Engine unavailable".into()),
             });
-            return info_hash;
+            return;
         }
         drop(map);
 
         let _ = ui_tx.try_send(UiEvent::Update(update));
-        info_hash
     }
 
     /// Adds a torrent in a paused state without starting the download.
     pub fn add_paused(
         &self,
+        info_hash: String,
         name: String,
         uri: String,
         output_dir: PathBuf,
         sequential: bool,
         ui_tx: Sender<UiEvent>,
-    ) -> String {
-        let info_hash = self.add_paused_silent(name, uri, output_dir, sequential, ui_tx.clone());
+    ) {
+        self.add_paused_silent(
+            info_hash.clone(),
+            name,
+            uri,
+            output_dir,
+            sequential,
+            ui_tx.clone(),
+        );
         // Notify the UI of the new paused torrent, or of the (possibly changed)
         // sequential flag on re-add.
         if let Some(torrent) = lock_recover(&self.saved, "saved map").get(&info_hash) {
@@ -350,25 +359,24 @@ impl TorrentEngine {
                 torrent.idle_update(&info_hash, TorrentUiState::Paused),
             ));
         }
-        info_hash
     }
 
     /// Adds a torrent in a paused state, without telling the window.
     pub fn add_paused_silent(
         &self,
+        info_hash: String,
         name: String,
         uri: String,
         output_dir: PathBuf,
         sequential: bool,
         ui_tx: Sender<UiEvent>,
-    ) -> String {
-        let info_hash = torrent_id(&uri);
+    ) {
         let mut map = lock_recover(&self.saved, "saved map");
 
         if let Some(existing) = map.get(&info_hash) {
             log::info!("Torrent already saved/paused: {} ({})", name, info_hash);
             existing.sequential.store(sequential, Ordering::Relaxed);
-            return info_hash;
+            return;
         }
 
         log::info!(
@@ -378,10 +386,9 @@ impl TorrentEngine {
             sequential
         );
         map.insert(
-            info_hash.clone(),
+            info_hash,
             TorrentEntry::new(name, uri, output_dir, sequential, ui_tx),
         );
-        info_hash
     }
 
     /// Hands `torrent` to the engine thread and records it as running. The torrent comes
@@ -831,14 +838,6 @@ pub(crate) fn info_hash(uri: &str) -> Option<String> {
     }
 }
 
-/// Canonical identity for a torrent: the real BitTorrent info hash (hex) when
-/// the URI is a parseable magnet link or `.torrent` file, so the same content
-/// added via magnet and via file maps to one entry instead of two concurrent
-/// downloads. Falls back to hashing the URI text when nothing parses.
-pub(crate) fn torrent_id(uri: &str) -> String {
-    info_hash(uri).unwrap_or_else(|| hash_uri(uri))
-}
-
 /// An info hash in lowercase hex.
 pub(crate) fn hex(hash: &[u8; 20]) -> String {
     use std::fmt::Write;
@@ -854,10 +853,26 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use super::{TorrentUiState, listening_port, lock_recover, name_nameless_magnet, torrent_id};
+    use super::{
+        TorrentUiState, hash_uri, info_hash, listening_port, lock_recover, name_nameless_magnet,
+    };
     use crate::test_support::{Harness, TestTorrent, closed_addr};
 
     const WAIT: Duration = Duration::from_secs(20);
+
+    /// Starts `uri` as the window does, keyed by its info hash, and returns that.
+    fn start(h: &Harness, name: &str, uri: String, sequential: bool) -> String {
+        let hash = info_hash(&uri).expect("a torrent");
+        h.engine.start(
+            hash.clone(),
+            name.into(),
+            uri,
+            h.output_dir(),
+            sequential,
+            h.tx.clone(),
+        );
+        hash
+    }
 
     /// A magnet link whose only peer does not exist: the torrent runs and gets nowhere.
     fn magnet_to_nowhere(n: u8) -> String {
@@ -868,13 +883,7 @@ mod tests {
     #[test]
     fn a_started_torrent_runs_until_paused_and_again_once_resumed() {
         let h = Harness::new("engine-toggle", 0);
-        let hash = h.engine.start(
-            "Name".into(),
-            magnet_to_nowhere(1),
-            h.output_dir(),
-            false,
-            h.tx.clone(),
-        );
+        let hash = start(&h, "Name", magnet_to_nowhere(1), false);
         let first = h.wait_for_update(&hash, WAIT, |_| true);
         assert_eq!(first.state, TorrentUiState::Downloading);
         assert_eq!(first.name, "Name");
@@ -899,16 +908,8 @@ mod tests {
     fn starting_a_running_torrent_again_starts_nothing_new() {
         let h = Harness::new("engine-restart", 0);
         let uri = magnet_to_nowhere(2);
-        let hash = h.engine.start(
-            String::new(),
-            uri.clone(),
-            h.output_dir(),
-            false,
-            h.tx.clone(),
-        );
-        let again = h
-            .engine
-            .start(String::new(), uri, h.output_dir(), true, h.tx.clone());
+        let hash = start(&h, "", uri.clone(), false);
+        let again = start(&h, "", uri, true);
         assert_eq!(hash, again);
         // The second start only reports the new sequential setting.
         h.wait_for_update(&hash, WAIT, |u| u.sequential);
@@ -922,13 +923,7 @@ mod tests {
     #[test]
     fn toggling_sequential_restarts_a_running_torrent_without_pausing_it() {
         let h = Harness::new("engine-sequential", 0);
-        let hash = h.engine.start(
-            "Name".into(),
-            magnet_to_nowhere(9),
-            h.output_dir(),
-            false,
-            h.tx.clone(),
-        );
+        let hash = start(&h, "Name", magnet_to_nowhere(9), false);
         let first = h.wait_for_update(&hash, WAIT, |_| true);
         assert!(!first.sequential);
 
@@ -968,9 +963,12 @@ mod tests {
     #[test]
     fn a_torrent_added_paused_starts_when_resumed() {
         let h = Harness::new("engine-paused", 0);
-        let hash = h.engine.add_paused(
+        let uri = magnet_to_nowhere(3);
+        let hash = info_hash(&uri).unwrap();
+        h.engine.add_paused(
+            hash.clone(),
             "Paused".into(),
-            magnet_to_nowhere(3),
+            uri,
             h.output_dir(),
             false,
             h.tx.clone(),
@@ -986,13 +984,7 @@ mod tests {
     #[test]
     fn a_failed_torrent_can_be_retried() {
         let h = Harness::new("engine-failed", 0);
-        let hash = h.engine.start(
-            String::new(),
-            magnet_to_nowhere(4),
-            h.output_dir(),
-            false,
-            h.tx.clone(),
-        );
+        let hash = start(&h, "", magnet_to_nowhere(4), false);
         h.engine.mark_failed(&hash);
         assert!(!h.engine.is_active(&hash));
         h.engine.toggle(&hash);
@@ -1002,15 +994,7 @@ mod tests {
     #[test]
     fn running_torrents_get_consecutive_ports_and_a_new_one_the_first_free() {
         let h = Harness::new("engine-ports", 47_000);
-        let start = |n| {
-            h.engine.start(
-                String::new(),
-                magnet_to_nowhere(n),
-                h.output_dir(),
-                false,
-                h.tx.clone(),
-            )
-        };
+        let start = |n| start(&h, "", magnet_to_nowhere(n), false);
         let port = |hash: &str| lock_recover(&h.engine.active, "active map")[hash].port;
 
         let hashes: Vec<String> = [5, 6, 7].into_iter().map(start).collect();
@@ -1036,9 +1020,7 @@ mod tests {
         let h = Harness::new("engine-file", 0);
         let torrent = TestTorrent::create(h.dir.path(), "From A File", 100_000, 16 * 1024);
         let uri = torrent.metainfo_path.to_string_lossy().into_owned();
-        let hash = h
-            .engine
-            .start("stem".into(), uri, h.output_dir(), false, h.tx.clone());
+        let hash = start(&h, "stem", uri, false);
         assert_eq!(hash, torrent.hex_hash());
         let update = h.wait_for_update(&hash, WAIT, |u| u.total > 0);
         assert_eq!(update.name, "From A File");
@@ -1074,20 +1056,21 @@ mod tests {
     }
 
     #[test]
-    fn torrent_id_uses_magnet_info_hash() {
+    fn info_hash_uses_magnet_info_hash() {
         let hex = "0123456789abcdef0123456789abcdef01234567";
         let with_dn = format!("magnet:?xt=urn:btih:{hex}&dn=Some%20Name");
         let without_dn = format!("magnet:?xt=urn:btih:{hex}");
         // Same content, different URI text: identical identity.
-        assert_eq!(torrent_id(&with_dn), hex);
-        assert_eq!(torrent_id(&with_dn), torrent_id(&without_dn));
+        assert_eq!(info_hash(&with_dn).as_deref(), Some(hex));
+        assert_eq!(info_hash(&with_dn), info_hash(&without_dn));
     }
 
     #[test]
-    fn torrent_id_falls_back_for_unparseable_uris() {
-        let a = torrent_id("not a magnet at all");
-        let b = torrent_id("not a magnet at all");
-        let c = torrent_id("something else");
+    fn unparseable_uris_have_no_info_hash_but_a_hash_of_their_text() {
+        assert_eq!(info_hash("not a magnet at all"), None);
+        let a = hash_uri("not a magnet at all");
+        let b = hash_uri("not a magnet at all");
+        let c = hash_uri("something else");
         assert_eq!(a, b);
         assert_ne!(a, c);
         assert_eq!(a.len(), 40);
