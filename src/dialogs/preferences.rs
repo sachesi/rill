@@ -69,7 +69,7 @@ mod imp {
         fn on_max_downloads_changed(&self) {
             let value = self.max_downloads_row.value() as i32;
             let obj = self.obj();
-            obj.save(|s| s.max_active_downloads = value);
+            obj.save(move |s| s.max_active_downloads = value);
             if let Some(window) = self.window.upgrade() {
                 window.set_download_limit(value.max(1) as usize);
             }
@@ -81,7 +81,10 @@ mod imp {
                 return;
             }
             let value = self.port_row.value() as u16;
-            self.obj().save(|s| s.pwp_port = value);
+            self.obj().save(move |s| s.pwp_port = value);
+            if let Some(window) = self.window.upgrade() {
+                window.set_listening_port(value);
+            }
         }
 
         #[template_callback]
@@ -98,7 +101,10 @@ mod imp {
                 self.port_row.value() as u16
             };
             self.port_row.set_visible(!automatic);
-            self.obj().save(|s| s.pwp_port = port);
+            self.obj().save(move |s| s.pwp_port = port);
+            if let Some(window) = self.window.upgrade() {
+                window.set_listening_port(port);
+            }
         }
 
         #[template_callback]
@@ -107,7 +113,7 @@ mod imp {
                 .get(self.log_level_row.selected() as usize)
                 .copied()
                 .unwrap_or("info");
-            self.obj().save(|s| s.log_level = level.to_string());
+            self.obj().save(move |s| s.log_level = level.to_string());
         }
     }
 }
@@ -119,10 +125,9 @@ glib::wrapper! {
 }
 
 impl PreferencesDialog {
-    pub fn new(window: &RillWindow, storage: Storage) -> Self {
+    pub fn new(window: &RillWindow, storage: Storage, settings: &AppSettings) -> Self {
         let dialog: Self = glib::Object::new();
         let imp = dialog.imp();
-        let settings = storage.load_settings();
         imp.window.set(Some(window));
 
         // Filled in before the storage is set, so that nothing is written back.
@@ -160,20 +165,30 @@ impl PreferencesDialog {
         dialog
     }
 
-    /// Changes one setting and stores it, saying so when that fails.
-    fn save(&self, change: impl FnOnce(&mut AppSettings)) {
+    /// Changes one setting and stores it, saying so when that fails. The worker reads and
+    /// writes the settings in one job, so that the ones it saves for the window are not
+    /// lost in between.
+    fn save(&self, change: impl FnOnce(&mut AppSettings) + Send + 'static) {
         let Some(storage) = self.imp().storage.get() else {
             return;
         };
-        let mut settings = storage.load_settings();
-        change(&mut settings);
-        match storage.save_settings(&settings) {
-            Ok(()) => logging::apply_settings(&settings),
-            Err(e) => {
-                log::warn!("Failed to save settings: {e}");
-                self.add_toast(adw::Toast::new(&gettext("Could not save the setting")));
+        let saved = storage.query(move |s| {
+            let mut settings = s.load_settings();
+            change(&mut settings);
+            s.save_settings(&settings).map(|()| settings)
+        });
+        let dialog = self.downgrade();
+        glib::spawn_future_local(async move {
+            match saved.await.and_then(|r| r) {
+                Ok(settings) => logging::apply_settings(&settings),
+                Err(e) => {
+                    log::warn!("Failed to save settings: {e}");
+                    if let Some(dialog) = dialog.upgrade() {
+                        dialog.add_toast(adw::Toast::new(&gettext("Could not save the setting")));
+                    }
+                }
             }
-        }
+        });
     }
 
     fn choose_folder(&self) {
@@ -195,7 +210,8 @@ impl PreferencesDialog {
                             .imp()
                             .folder_row
                             .set_subtitle(&path.to_string_lossy());
-                        dialog.save(|s| s.download_folder = path.to_string_lossy().into_owned());
+                        let folder = path.to_string_lossy().into_owned();
+                        dialog.save(move |s| s.download_folder = folder);
                     }
                 }
             ),

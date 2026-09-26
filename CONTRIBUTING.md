@@ -38,7 +38,7 @@ Before a change goes in:
     src/torrent_paths.rs     where a torrent's content is, kept inside the download folder
     src/tray.rs              the StatusNotifier icon
     src/test_support.rs      what the tests share: scratch directories, a made-up .torrent,
-                             an engine with its runtimes and database
+                             an engine with its runtimes and DHT node
 
 Widgets are GObject subclasses with composite templates from the Blueprint files. The
 rows do not talk to the engine: their actions activate `win.pause-torrent`,

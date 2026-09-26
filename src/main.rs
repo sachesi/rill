@@ -91,7 +91,8 @@ fn start_session() -> Result<Session, String> {
     let db_path = data_dir.join("torrents.db");
     let storage = Storage::open(db_path.clone())
         .map_err(|e| format!("Could not open the database {}: {e}", db_path.display()))?;
-    logging::apply_settings(&storage.load_settings());
+    let settings = storage.load_settings();
+    logging::apply_settings(&settings);
 
     // Peer connections want a current-thread runtime of their own (they use spawn_local).
     // The builder is Send, the runtime is not, so it is built on the thread that drives it.
@@ -116,7 +117,7 @@ fn start_session() -> Result<Session, String> {
         pwp_handle,
         storage_runtime.handle().clone(),
         dht_cmds,
-        storage.clone(),
+        settings.pwp_port,
     ));
 
     let mut saved = storage.load_torrents().unwrap_or_else(|e| {

@@ -341,18 +341,6 @@ impl Database {
         Ok(())
     }
 
-    /// Pause all downloading torrents
-    /// Get setting value by key
-    pub fn get_setting(&self, key: &str) -> SqlResult<Option<String>> {
-        let value: Option<String> = self
-            .conn
-            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
-                row.get(0)
-            })
-            .ok();
-        Ok(value)
-    }
-
     /// Set setting value
     pub fn set_setting(&self, key: &str, value: &str) -> SqlResult<()> {
         self.conn.execute(
@@ -360,15 +348,6 @@ impl Database {
             rusqlite::params![key, value],
         )?;
         Ok(())
-    }
-
-    /// Read just the PWP port setting (single query).
-    pub fn get_pwp_port(&self) -> u16 {
-        self.get_setting("pwp_port")
-            .ok()
-            .flatten()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0)
     }
 
     /// Load app settings from database, in one query for the whole table.
@@ -610,14 +589,12 @@ mod tests {
             ("debug", true)
         );
         assert_eq!(loaded.sort_order, "size");
-        assert_eq!(db.get_pwp_port(), 51_000);
 
         db.set_setting("pwp_port", "not a port").unwrap();
         db.set_setting("max_active_downloads", "").unwrap();
         let loaded = db.load_settings();
         assert_eq!(loaded.pwp_port, defaults.pwp_port);
         assert_eq!(loaded.max_active_downloads, defaults.max_active_downloads);
-        assert_eq!(db.get_pwp_port(), 0);
     }
 
     #[test]

@@ -221,11 +221,6 @@ impl Storage {
         self.db().load_settings()
     }
 
-    /// Read just the configured PWP port without loading every setting.
-    pub fn pwp_port(&self) -> u16 {
-        self.db().get_pwp_port()
-    }
-
     /// Save app settings
     pub fn save_settings(&self, settings: &AppSettings) -> Result<(), String> {
         self.db()

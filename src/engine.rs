@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_channel::Sender;
@@ -222,7 +222,9 @@ pub struct TorrentEngine {
     saved: Arc<Mutex<HashMap<String, TorrentEntry>>>,
     cmd_tx: tokio::sync::mpsc::Sender<StartCmd>,
     config_dir: PathBuf,
-    storage: crate::storage::Storage,
+    /// The listening port setting: where torrents started from now on count up from, or 0
+    /// for each to take the one mtorrent derives.
+    pwp_port: AtomicU16,
 }
 
 impl TorrentEngine {
@@ -232,7 +234,7 @@ impl TorrentEngine {
         pwp_handle: tokio::runtime::Handle,
         storage_handle: tokio::runtime::Handle,
         dht_sink: dht::CommandSink,
-        storage: crate::storage::Storage,
+        pwp_port: u16,
     ) -> Self {
         log::info!("Creating torrent engine, config_dir: {:?}", config_dir);
         // Bounded so a wedged recv loop applies backpressure instead of growing
@@ -280,7 +282,7 @@ impl TorrentEngine {
             saved: Arc::new(Mutex::new(HashMap::new())),
             cmd_tx,
             config_dir,
-            storage,
+            pwp_port: AtomicU16::new(pwp_port),
         }
     }
 
@@ -403,7 +405,7 @@ impl TorrentEngine {
         let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<Stop>();
         let stop_flag = Arc::new(AtomicU8::new(Stop::RUNNING));
         let port = listening_port(
-            self.storage.pwp_port(),
+            self.pwp_port.load(Ordering::Relaxed),
             &sanitize_magnet_dn(&torrent.uri),
             active.values().map(|torrent| torrent.port),
             port_is_free,
@@ -549,6 +551,12 @@ impl TorrentEngine {
     /// Returns true if the torrent is currently active and downloading/seeding.
     pub fn is_active(&self, info_hash: &str) -> bool {
         lock_recover(&self.active, "active map").contains_key(info_hash)
+    }
+
+    /// Sets the listening port for the torrents started from now on; 0 lets each take the
+    /// one mtorrent derives.
+    pub fn set_pwp_port(&self, port: u16) {
+        self.pwp_port.store(port, Ordering::Relaxed);
     }
 
     /// The data directory, where copied .torrent files are kept.

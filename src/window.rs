@@ -1515,6 +1515,12 @@ impl RillWindow {
         self.check_queue();
     }
 
+    /// Sets the port the torrents started from now on count up from; 0 lets each take a
+    /// port of its own.
+    pub fn set_listening_port(&self, port: u16) {
+        self.engine().set_pwp_port(port);
+    }
+
     /// Pauses the newest downloads above the limit, or starts the oldest waiting ones
     /// while there is room. A torrent the user paused is never started.
     fn run_queue(&self) {
