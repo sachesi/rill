@@ -37,6 +37,8 @@ fn main() -> glib::ExitCode {
         // mtorrent logs routine peer churn (reset, interrupted, bad ack) as errors.
         .filter_module("mtorrent_base::utp::handle", log::LevelFilter::Off)
         .filter_module("mtorrent_base::utp::udp", log::LevelFilter::Off)
+        // Every peer of a torrent being paused warns that its connection was dropped.
+        .filter_module("mtorrent_base::pwp::channels", log::LevelFilter::Error)
         .init();
 
     raise_open_file_limit();

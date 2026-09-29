@@ -5,7 +5,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
-use mtorrent::utils::re_exports::mtorrent_utils::worker;
+use mtorrent::app::dht;
 
 use crate::config;
 use crate::dialogs::PreferencesDialog;
@@ -18,7 +18,7 @@ use crate::window::RillWindow;
 pub struct Session {
     /// Owns the DHT thread; dropping it stops the node, which then saves the nodes it
     /// knows for the next start.
-    pub dht_worker: RefCell<Option<worker::rt::Handle>>,
+    pub dht_worker: RefCell<Option<dht::Handle>>,
     /// Runs the torrents' disk storage; dropping it stops that.
     pub _storage_runtime: tokio::runtime::Runtime,
     pub engine: Rc<TorrentEngine>,

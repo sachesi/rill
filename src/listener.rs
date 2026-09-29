@@ -1,4 +1,3 @@
-use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -162,7 +161,7 @@ fn metainfo_name(uri: &str, output_dir: &std::path::Path) -> Option<String> {
 impl StateListener for GtkListener {
     const INTERVAL: Duration = Duration::from_secs(1);
 
-    fn on_snapshot(&mut self, snapshot: StateSnapshot<'_>) -> ControlFlow<()> {
+    fn on_snapshot(&mut self, snapshot: StateSnapshot<'_>) {
         let is_sequential = self.sequential.load(std::sync::atomic::Ordering::Relaxed);
         let total_pieces = snapshot.pieces.total;
         let downloaded_pieces = snapshot.pieces.downloaded;
@@ -186,26 +185,9 @@ impl StateListener for GtkListener {
         let stop = Stop::from_code(self.stop_flag.load(std::sync::atomic::Ordering::Acquire))
             .or_else(|| (self.canceller.strong_count() < 2).then_some(Stop::Pause));
         if let Some(stop) = stop {
-            log::debug!("Listener cancelled for: {} ({:?})", self.info_hash, stop);
-            if matches!(stop, Stop::Restart) {
-                // The torrent goes on in a new task, which reports its state.
-                return ControlFlow::Break(());
-            }
-            let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
-                downloaded: self.last_downloaded,
-                total: snapshot.bytes.total as u64,
-                total_pieces,
-                downloaded_pieces,
-                ..UiUpdate::idle(
-                    self.info_hash.clone(),
-                    self.name.clone(),
-                    TorrentUiState::Paused,
-                    self.output_dir.clone(),
-                    self.uri.clone(),
-                    is_sequential,
-                )
-            }));
-            return ControlFlow::Break(());
+            // The task reports how the torrent ended once mtorrent has shut it down.
+            log::trace!("Listener cancelled for: {} ({:?})", self.info_hash, stop);
+            return;
         }
 
         let downloaded = snapshot.bytes.downloaded as u64;
@@ -294,7 +276,6 @@ impl StateListener for GtkListener {
             sequential: is_sequential,
             piece_map,
         }));
-        ControlFlow::Continue(())
     }
 }
 
@@ -347,18 +328,22 @@ mod tests {
     }
 
     #[test]
-    fn a_paused_torrent_is_reported_but_a_restarted_one_is_left_to_its_new_task() {
+    fn a_stopping_torrent_is_left_to_its_task_to_report() {
         let (tx, events) = async_channel::unbounded();
 
-        let (mut paused, _canceller) = listener(Some(Stop::Pause), tx.clone());
-        assert!(paused.on_snapshot(empty_snapshot()).is_break());
-        let UiEvent::Update(update) = events.try_recv().expect("the pause is reported") else {
-            panic!("expected an update");
-        };
-        assert_eq!(update.state, TorrentUiState::Paused);
+        let (mut running, canceller) = listener(None, tx.clone());
+        // Held by the engine's entry and by the task alike while the torrent runs.
+        let _task = Arc::clone(&canceller);
+        running.on_snapshot(empty_snapshot());
+        assert!(
+            events.try_recv().is_ok(),
+            "the running torrent reported nothing"
+        );
 
-        let (mut restarted, _canceller) = listener(Some(Stop::Restart), tx);
-        assert!(restarted.on_snapshot(empty_snapshot()).is_break());
-        assert!(events.try_recv().is_err(), "the restart reported something");
+        for stop in [Stop::Pause, Stop::Restart] {
+            let (mut stopping, _canceller) = listener(Some(stop), tx.clone());
+            stopping.on_snapshot(empty_snapshot());
+            assert!(events.try_recv().is_err(), "{stop:?} reported something");
+        }
     }
 }

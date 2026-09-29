@@ -708,6 +708,7 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
         } else {
             app::main::DownloadStrategy::RarestFirst
         },
+        mode: app::main::Mode::Leech,
     };
     let ctx = app::main::Context {
         dht_handle: Some(shared.dht),
@@ -715,33 +716,36 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
         storage_runtime: shared.storage_runtime,
     };
 
-    let mut rx = cancel_rx;
-    let mut stop_reason = Stop::Pause;
-    let result = tokio::select! {
-        res = app::main::single_torrent(&uri, listener, config, ctx) => Some(res),
-        reason = &mut rx => {
-            // A dropped sender means the entry went away without a reason, which ends
-            // the torrent as a pause does.
-            stop_reason = reason.unwrap_or(Stop::Pause);
-            log::info!("Torrent task ended ({:?}): {}", stop_reason, info_hash);
-            None
-        }
+    let mut stop_reason = None;
+    let cancel = async {
+        // A dropped sender means the entry went away without a reason, which ends the
+        // torrent as a pause does.
+        stop_reason = Some(cancel_rx.await.unwrap_or(Stop::Pause));
     };
+    // Polled to the end even once cancelled: mtorrent then shuts the torrent's sockets
+    // and tasks down, where dropping the future would abort them.
+    let result = app::main::single_torrent(&uri, listener, cancel, config, ctx).await;
 
-    if let Some(res) = result {
+    if let Some(stop_reason) = stop_reason {
+        log::info!("Torrent task ended ({:?}): {}", stop_reason, info_hash);
+        if let Err(e) = &result {
+            log::warn!("Torrent failed while ending: {}: {}", info_hash, e);
+        }
+    }
+    if stop_reason.is_none() {
         if Arc::strong_count(&canceller) > 1 {
-            match &res {
+            match &result {
                 Ok(_) => log::info!("Torrent completed: {}", info_hash),
                 Err(e) => log::error!("Torrent failed: {}: {}", info_hash, e),
             }
             let _ = ui_tx
                 .send(UiEvent::Finished {
                     info_hash,
-                    error: res.err().map(|e| e.to_string()),
+                    error: result.err().map(|e| e.to_string()),
                 })
                 .await;
         }
-    } else if matches!(stop_reason, Stop::Pause) {
+    } else if matches!(stop_reason, Some(Stop::Pause)) {
         let update = UiUpdate {
             downloaded: downloaded_bytes.load(Ordering::Relaxed),
             total: total_bytes.load(Ordering::Relaxed),

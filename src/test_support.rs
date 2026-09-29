@@ -88,7 +88,7 @@ pub struct Harness {
     pub events: async_channel::Receiver<UiEvent>,
     _storage_runtime: tokio::runtime::Runtime,
     // Stops the DHT node, which saves its state, before the directory goes.
-    _dht: mtorrent::utils::re_exports::mtorrent_utils::worker::rt::Handle,
+    _dht: mtorrent::app::dht::Handle,
     pub dir: ScratchDir,
 }
 
