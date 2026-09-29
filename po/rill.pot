@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: rill 0.3.2\n"
+"Project-Id-Version: rill 0.3.3\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/rill/issues\n"
-"POT-Creation-Date: 2026-09-24 22:27+0300\n"
+"POT-Creation-Date: 2026-09-29 09:21+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -28,7 +28,7 @@ msgid "BitTorrent Client"
 msgstr ""
 
 #: data/io.github.sachesi.rill.desktop:4
-#: data/io.github.sachesi.rill.metainfo.xml:7 src/application.rs:163
+#: data/io.github.sachesi.rill.metainfo.xml:7 src/application.rs:167
 #: src/tray.rs:38
 #, no-c-format
 msgid "Download files over BitTorrent"
@@ -100,20 +100,36 @@ msgstr ""
 
 #: data/io.github.sachesi.rill.metainfo.xml:62
 msgid ""
+"Rill now uses mtorrent 0.9.0. A paused torrent closes its connections and "
+"stops its work before it ends, rather than being cut off in the middle."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:63
+msgid ""
+"The window no longer waits on the disk or the database once it is up, and "
+"the DHT nodes Rill knows are saved on quit, so the next start finds peers "
+"sooner. Cancel in selection mode works again, adding a torrent that is "
+"already in the list resumes it instead of starting a second copy, and "
+"a .torrent file with sizes that make no sense no longer brings down a "
+"worker. Download folders whose names are not UTF-8 are kept as they are."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:68
+msgid ""
 "Rill finds peers through the DHT much sooner. It sent no more than ten DHT "
 "queries at a time, so searching for a torrent's peers waited behind the "
 "node's own upkeep and often found none. Rill now uses mtorrent 0.7.2 and "
 "starts fewer threads."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:63
+#: data/io.github.sachesi.rill.metainfo.xml:69
 msgid ""
 "Uninstalling a build from source refreshes the icon cache, so removing a per-"
 "user install no longer leaves Rill without icons when it is also installed "
 "for the whole system."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:68
+#: data/io.github.sachesi.rill.metainfo.xml:74
 msgid ""
 "Rill now uses mtorrent 0.6.1, which closes a torrent's uTP connections "
 "before the torrent stops. A torrent that is paused and resumed, or switched "
@@ -123,7 +139,7 @@ msgid ""
 "are no longer reported as errors."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:73
+#: data/io.github.sachesi.rill.metainfo.xml:79
 msgid ""
 "Torrents pick up where they left off after Rill restarts. The list can be "
 "ordered by name, size or progress, every torrent can be paused or resumed at "
@@ -132,7 +148,7 @@ msgid ""
 "warns when a torrent needs more room than its folder has."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:74
+#: data/io.github.sachesi.rill.metainfo.xml:80
 msgid ""
 "A torrent whose files were removed is paused and marked as having files not "
 "found, instead of showing as finished, and resuming it downloads them again. "
@@ -141,7 +157,7 @@ msgid ""
 "All starts torrents only as far as the limit allows."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:75
+#: data/io.github.sachesi.rill.metainfo.xml:81
 msgid ""
 "Rill now uses mtorrent 0.6.0. Each running torrent listens on a port of its "
 "own, the DHT keeps working when another client holds port 6881, and magnet "
@@ -149,7 +165,7 @@ msgid ""
 "on every update, which could stall the display with many torrents and peers."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:80
+#: data/io.github.sachesi.rill.metainfo.xml:86
 msgid ""
 "The application id is now io.github.sachesi.rill. The dialogs adapt to "
 "narrow windows and open as bottom sheets on phones, and the details of a "
@@ -157,7 +173,7 @@ msgid ""
 "top."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:81
+#: data/io.github.sachesi.rill.metainfo.xml:87
 msgid ""
 "The add dialog shows the folder a torrent will be saved to. Selection mode "
 "has a bar with Resume, Pause and Delete, a search that matches nothing says "
@@ -166,7 +182,7 @@ msgid ""
 "simultaneous downloads applies at once."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:82
+#: data/io.github.sachesi.rill.metainfo.xml:88
 msgid ""
 "Preferences no longer offer bandwidth limits, an upload limit, a seeding "
 "ratio or a logging switch: none of them had any effect on transfers. The "
@@ -174,7 +190,7 @@ msgid ""
 "no longer shows checkboxes that did nothing."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:87
+#: data/io.github.sachesi.rill.metainfo.xml:93
 msgid ""
 "The same torrent added as a magnet link and as a file is one transfer, not "
 "two. A torrent you pause is no longer resumed by the download queue, a "
@@ -184,19 +200,19 @@ msgid ""
 "starts."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:88
+#: data/io.github.sachesi.rill.metainfo.xml:94
 msgid ""
 "Magnet links can be dropped on the window, closing the window quits when "
 "there is no system tray to reopen it from, and more of the interface is "
 "translated."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:93
+#: data/io.github.sachesi.rill.metainfo.xml:99
 msgid ""
 "More reliable tracking of each torrent's state across pauses and restarts."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:98
+#: data/io.github.sachesi.rill.metainfo.xml:104
 msgid ""
 "Ukrainian translation. The source of a torrent can be copied from its "
 "details, and its folder opened from the context menu. File paths inside a "
@@ -204,98 +220,98 @@ msgid ""
 "addresses are refused."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:103
+#: data/io.github.sachesi.rill.metainfo.xml:109
 msgid "A new application icon."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:108
+#: data/io.github.sachesi.rill.metainfo.xml:114
 msgid ""
 "Database writes and torrent metadata parsing no longer run on the thread "
 "that draws the window."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:113
+#: data/io.github.sachesi.rill.metainfo.xml:119
 msgid "First release."
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:165
+#: src/application.rs:169
 #, no-c-format
 msgid "translator-credits"
 msgstr ""
 
-#: src/dialogs/add_torrent.rs:120 ui/shortcuts_dialog.ui:21
+#: src/dialogs/add_torrent.rs:121 ui/shortcuts_dialog.ui:21
 #, no-c-format
 msgid "Add Magnet Link"
 msgstr ""
 
-#: src/dialogs/add_torrent.rs:127 src/window.rs:563 ui/shortcuts_dialog.ui:15
+#: src/dialogs/add_torrent.rs:128 src/window.rs:590 ui/shortcuts_dialog.ui:15
 #, no-c-format
 msgid "Add Torrent File"
 msgstr ""
 
-#: src/dialogs/add_torrent.rs:163
+#: src/dialogs/add_torrent.rs:198
 #, no-c-format
 msgid "Not enough space in this folder: %1 needed, %2 free"
 msgstr ""
 
-#: src/dialogs/add_torrent.rs:172 src/window.rs:558
+#: src/dialogs/add_torrent.rs:209 src/window.rs:585
 #, no-c-format
 msgid "Torrent Files"
 msgstr ""
 
-#: src/dialogs/add_torrent.rs:177
+#: src/dialogs/add_torrent.rs:214
 #, no-c-format
 msgid "Choose a Torrent File"
 msgstr ""
 
-#: src/dialogs/add_torrent.rs:199 src/window.rs:782
+#: src/dialogs/add_torrent.rs:236 src/window.rs:809
 #, no-c-format
 msgid "Choose a Download Folder"
 msgstr ""
 
-#: src/dialogs/add_torrent.rs:235
+#: src/dialogs/add_torrent.rs:275
 #, no-c-format
 msgid "This is not a magnet link"
 msgstr ""
 
 #. Translators: %s is a file name.
-#: src/dialogs/add_torrent.rs:264
+#: src/dialogs/add_torrent.rs:306
 #, no-c-format
 msgid "“%s” is not a torrent file"
 msgstr ""
 
-#: src/dialogs/preferences.rs:144
+#: src/dialogs/preferences.rs:149
 #, no-c-format
 msgid "Errors"
 msgstr ""
 
-#: src/dialogs/preferences.rs:145
+#: src/dialogs/preferences.rs:150
 #, no-c-format
 msgid "Warnings"
 msgstr ""
 
-#: src/dialogs/preferences.rs:146
+#: src/dialogs/preferences.rs:151
 #, no-c-format
 msgid "Information"
 msgstr ""
 
-#: src/dialogs/preferences.rs:147
+#: src/dialogs/preferences.rs:152
 #, no-c-format
 msgid "Debugging"
 msgstr ""
 
-#: src/dialogs/preferences.rs:148
+#: src/dialogs/preferences.rs:153
 #, no-c-format
 msgid "Everything"
 msgstr ""
 
-#: src/dialogs/preferences.rs:174
+#: src/dialogs/preferences.rs:187
 #, no-c-format
 msgid "Could not save the setting"
 msgstr ""
 
-#: src/dialogs/preferences.rs:182
+#: src/dialogs/preferences.rs:197
 #, no-c-format
 msgid "Choose the Download Folder"
 msgstr ""
@@ -491,88 +507,88 @@ msgid ""
 "Rill."
 msgstr ""
 
-#: src/window.rs:577
+#: src/window.rs:604
 #, no-c-format
 msgid "Only local files can be added"
 msgstr ""
 
-#: src/window.rs:686
+#: src/window.rs:713
 #, no-c-format
 msgid "Select Torrents"
 msgstr ""
 
-#: src/window.rs:688
+#: src/window.rs:715
 #, no-c-format
 msgid "%d selected"
 msgid_plural "%d selected"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:821
+#: src/window.rs:848
 #, no-c-format
 msgid "Could not move the files; the folder is unchanged"
 msgstr ""
 
-#: src/window.rs:859
+#: src/window.rs:886
 #, no-c-format
 msgid "Delete Torrent?"
 msgstr ""
 
 #. Translators: %s is the name of a torrent.
-#: src/window.rs:861
+#: src/window.rs:888
 #, no-c-format
 msgid "“%s” will be removed from the list."
 msgstr ""
 
-#: src/window.rs:865
+#: src/window.rs:892
 #, no-c-format
 msgid "Delete Torrents?"
 msgstr ""
 
-#: src/window.rs:867
+#: src/window.rs:894
 #, no-c-format
 msgid "%d torrent will be removed from the list."
 msgid_plural "%d torrents will be removed from the list."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:875
+#: src/window.rs:902
 #, no-c-format
 msgid "Also delete the downloaded files"
 msgstr ""
 
-#: src/window.rs:883 ui/add_torrent_dialog.ui:21 ui/window.ui:99
+#: src/window.rs:910 ui/add_torrent_dialog.ui:21 ui/window.ui:99
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
-#: src/window.rs:884
+#: src/window.rs:911
 #, no-c-format
 msgid "_Delete"
 msgstr ""
 
-#: src/window.rs:953
+#: src/window.rs:960
 #, no-c-format
 msgid "Could not delete the downloaded files: %s"
 msgstr ""
 
-#: src/window.rs:962
+#: src/window.rs:969
 #, no-c-format
 msgid "Could not find the downloaded files"
 msgstr ""
 
 #. Translators: %1 is a torrent name, %2 the reason it failed.
-#: src/window.rs:1051
+#: src/window.rs:1089
 #, no-c-format
 msgid "“%1” failed: %2"
 msgstr ""
 
-#: src/window.rs:1063
+#: src/window.rs:1101
 #, no-c-format
 msgid "Download Complete"
 msgstr ""
 
-#: src/window.rs:1170
+#: src/window.rs:1218
 #, no-c-format
 msgid "Could not save the torrent: %s"
 msgstr ""
