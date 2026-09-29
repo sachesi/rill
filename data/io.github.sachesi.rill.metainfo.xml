@@ -57,6 +57,12 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.3.3" date="2026-09-29">
+      <description>
+        <p>Rill now uses mtorrent 0.9.0. A paused torrent closes its connections and stops its work before it ends, rather than being cut off in the middle.</p>
+        <p>The window no longer waits on the disk or the database once it is up, and the DHT nodes Rill knows are saved on quit, so the next start finds peers sooner. Cancel in selection mode works again, adding a torrent that is already in the list resumes it instead of starting a second copy, and a .torrent file with sizes that make no sense no longer brings down a worker. Download folders whose names are not UTF-8 are kept as they are.</p>
+      </description>
+    </release>
     <release version="0.3.2" date="2026-09-24">
       <description>
         <p>Rill finds peers through the DHT much sooner. It sent no more than ten DHT queries at a time, so searching for a torrent's peers waited behind the node's own upkeep and often found none. Rill now uses mtorrent 0.7.2 and starts fewer threads.</p>
