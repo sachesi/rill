@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use async_channel::Sender;
 use mtorrent::utils::listener::{StateListener, StateSnapshot};
+use mtorrent::utils::re_exports::mtorrent_base::pwp::Bitfield;
 
 use crate::engine::{Stop, TorrentUiState, UiEvent, UiUpdate};
 
@@ -27,13 +28,9 @@ pub struct GtkListener {
     total_pieces: usize,
     downloaded_pieces: usize,
     sequential: Arc<std::sync::atomic::AtomicBool>,
-    info_hash_resolved: bool,
     name_resolved: bool,
-    /// Directory holding the persisted `.mtorrent` piece-state file and the real
-    /// 20-byte info hash keying it. Resolved once from the URI + output dir.
-    state_target: Option<(PathBuf, [u8; 20])>,
     /// The last piece map, with the (total, downloaded) piece counts it was built for:
-    /// while those stay the same the state file is not read again.
+    /// while those stay the same it is not built again.
     last_piece_map: Option<(usize, usize, Vec<u8>)>,
 }
 
@@ -66,9 +63,7 @@ impl GtkListener {
             total_pieces: 0,
             downloaded_pieces: 0,
             sequential,
-            info_hash_resolved: false,
             name_resolved: false,
-            state_target: None,
             last_piece_map: None,
         }
     }
@@ -77,71 +72,20 @@ impl GtkListener {
 /// Number of segments in the downsampled fragmentation map sent to the UI.
 const PIECE_MAP_BUCKETS: usize = 200;
 
-/// Resolves the directory of the persisted `.mtorrent` piece-state file and the
-/// real info hash that keys it, mirroring how mtorrent derives the content dir
-/// (`output_dir/<metainfo file stem>` for files, `output_dir/<magnet name>` for
-/// magnets).
-fn resolve_state_target(uri: &str, output_dir: &std::path::Path) -> Option<(PathBuf, [u8; 20])> {
-    use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
-    use std::str::FromStr;
-
-    let path = std::path::Path::new(uri);
-    if path.is_file() {
-        let meta = Metainfo::from_file(path).ok()?;
-        let stem = path.file_stem()?;
-        Some((output_dir.join(stem), *meta.info_hash()))
-    } else if let Ok(magnet) = MagnetLink::from_str(uri) {
-        let name = magnet.name().unwrap_or("unnamed");
-        Some((output_dir.join(name), *magnet.info_hash()))
-    } else {
-        None
-    }
-}
-
-/// Name of the bencoded progress file mtorrent rewrites in the content dir on
-/// every snapshot interval (a dictionary of `{info_hash: bitfield}`).
-const STATE_FILENAME: &str = ".mtorrent";
-
-/// Reads the live piece bitfield mtorrent persists each interval and downsamples
-/// it to a fixed-width fill map (0..=255 per segment, in piece order). The
-/// bitfield is big-endian (piece 0 = most significant bit of the first byte).
-fn build_piece_map(
-    state_dir: &std::path::Path,
-    info_hash: &[u8; 20],
-    total_pieces: usize,
-) -> Vec<u8> {
-    use mtorrent::utils::re_exports::mtorrent_utils::benc::Element;
-
-    if total_pieces == 0 {
+/// Downsamples the snapshot's piece bitfield to a fixed-width fill map (0..=255 per
+/// segment, in piece order).
+fn build_piece_map(bitfield: &Bitfield) -> Vec<u8> {
+    let n = bitfield.len();
+    if n == 0 {
         return Vec::new();
     }
-    let Ok(buf) = std::fs::read(state_dir.join(STATE_FILENAME)) else {
-        return Vec::new();
-    };
-    let Ok(Element::Dictionary(mut root)) = Element::from_bytes(&buf) else {
-        return Vec::new();
-    };
-    let Some(Element::ByteString(bytes)) = root.remove(&Element::ByteString(info_hash.to_vec()))
-    else {
-        return Vec::new();
-    };
-
-    let has_piece = |i: usize| -> bool {
-        let byte = i / 8;
-        byte < bytes.len() && (bytes[byte] >> (7 - (i % 8))) & 1 == 1
-    };
-
-    let n = total_pieces;
     let buckets = PIECE_MAP_BUCKETS.min(n);
     let mut out = vec![0u8; buckets];
     for (b, slot) in out.iter_mut().enumerate() {
         let start = b * n / buckets;
         let end = ((b + 1) * n / buckets).max(start + 1).min(n);
-        let have = (start..end).filter(|&i| has_piece(i)).count();
-        let tot = end - start;
-        if let Some(fill) = (have * 255).checked_div(tot) {
-            *slot = fill as u8;
-        }
+        let have = bitfield[start..end].count_ones();
+        *slot = (have * 255 / (end - start)) as u8;
     }
     out
 }
@@ -168,10 +112,6 @@ impl StateListener for GtkListener {
         self.total_pieces = total_pieces;
         self.downloaded_pieces = downloaded_pieces;
 
-        if !self.info_hash_resolved {
-            self.state_target = resolve_state_target(&self.uri, &self.output_dir);
-            self.info_hash_resolved = true;
-        }
         // Pieces are known once the metadata is: from then on the torrent has its own
         // name, which replaces a file stem or a magnet link's `dn`.
         if !self.name_resolved && total_pieces > 0 {
@@ -243,20 +183,13 @@ impl StateListener for GtkListener {
             });
         }
 
-        let piece_map = if let Some((dir, ih)) = self.state_target.clone() {
-            let reuse = matches!(
-                &self.last_piece_map,
-                Some((t, d, _)) if *t == total_pieces && *d == downloaded_pieces
-            );
-            if reuse {
-                self.last_piece_map.as_ref().unwrap().2.clone()
-            } else {
-                let m = build_piece_map(&dir, &ih, total_pieces);
+        let piece_map = match &self.last_piece_map {
+            Some((t, d, m)) if *t == total_pieces && *d == downloaded_pieces => m.clone(),
+            _ => {
+                let m = build_piece_map(&snapshot.pieces.bitfield);
                 self.last_piece_map = Some((total_pieces, downloaded_pieces, m.clone()));
                 m
             }
-        } else {
-            Vec::new()
         };
 
         let _ = self.tx.try_send(UiEvent::Update(UiUpdate {
@@ -295,6 +228,18 @@ mod tests {
         let name = metainfo_name(uri, &dir);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(name.as_deref(), Some("real name"));
+    }
+
+    #[test]
+    fn the_piece_map_shows_how_much_of_each_segment_is_downloaded() {
+        assert!(build_piece_map(&Bitfield::new()).is_empty());
+
+        let few = Bitfield::from_iter([true, false, true, true, false]);
+        assert_eq!(build_piece_map(&few), vec![255, 0, 255, 255, 0]);
+
+        // Two pieces to a segment: the first of each pair downloaded.
+        let many = Bitfield::from_iter((0..PIECE_MAP_BUCKETS * 2).map(|i| i % 2 == 0));
+        assert_eq!(build_piece_map(&many), vec![127; PIECE_MAP_BUCKETS]);
     }
 
     /// A listener as a torrent task has it, with the stop flag the engine would set.
