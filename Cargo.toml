@@ -16,7 +16,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"
 async-channel = "2"
 log = "0.4"
 env_logger = "0.11"
-dirs = "6"
+dirs = "7"
 urlencoding = "2"
 rusqlite = { version = "0.40", features = ["bundled"] }
 sha1 = "0.11"
