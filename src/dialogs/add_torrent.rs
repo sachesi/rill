@@ -11,6 +11,7 @@ use gettextrs::gettext;
 use gtk::{gio, glib};
 use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
 
+use super::file_item::{self, FileItem};
 use crate::util::format_size;
 use crate::window::RillWindow;
 
@@ -32,6 +33,12 @@ mod imp {
         pub file_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
         pub file_row: TemplateChild<adw::ActionRow>,
+        #[template_child]
+        pub files_group: TemplateChild<adw::PreferencesGroup>,
+        #[template_child]
+        pub files: TemplateChild<gio::ListStore>,
+        #[template_child]
+        pub files_view: TemplateChild<gtk::ListView>,
         #[template_child]
         pub folder_row: TemplateChild<adw::ActionRow>,
         #[template_child]
@@ -55,6 +62,7 @@ mod imp {
         type ParentType = adw::Dialog;
 
         fn class_init(klass: &mut Self::Class) {
+            FileItem::ensure_type();
             klass.bind_template();
             klass.bind_template_callbacks();
         }
@@ -64,7 +72,18 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for AddTorrentDialog {}
+    impl ObjectImpl for AddTorrentDialog {
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.files_view.set_factory(Some(&file_item::factory()));
+            let weak = self.obj().downgrade();
+            file_item::add_selection_menu(&self.files_view, &self.files, move || {
+                if let Some(dialog) = weak.upgrade() {
+                    dialog.files_toggled();
+                }
+            });
+        }
+    }
     impl WidgetImpl for AddTorrentDialog {}
     impl AdwDialogImpl for AddTorrentDialog {}
 
@@ -128,6 +147,9 @@ impl AddTorrentDialog {
         self.set_title(&gettext("Add Torrent File"));
         imp.magnet_group.set_visible(false);
         imp.needed_bytes.set(0);
+        imp.files_group.set_visible(false);
+        imp.files.remove_all();
+        self.set_content_height(-1);
         self.check_space();
         imp.file_row
             .set_subtitle(&path.file_name().unwrap_or_default().to_string_lossy());
@@ -141,19 +163,47 @@ impl AddTorrentDialog {
             self,
             async move {
                 let file = path.clone();
-                let needed = gio::spawn_blocking(move || {
-                    Metainfo::from_file(file).map_or(0, |metainfo| content_size(&metainfo))
+                let (needed, files) = gio::spawn_blocking(move || {
+                    Metainfo::from_file(file).map_or((0, Vec::new()), |metainfo| {
+                        (content_size(&metainfo), file_item::torrent_files(&metainfo))
+                    })
                 })
                 .await
-                .unwrap_or(0);
+                .unwrap_or_default();
                 let imp = dialog.imp();
                 // Another file may have been chosen in the meantime.
-                if imp.file.borrow().as_ref() == Some(&path) {
-                    imp.needed_bytes.set(needed);
-                    dialog.check_space();
+                if imp.file.borrow().as_ref() != Some(&path) {
+                    return;
                 }
+                imp.needed_bytes.set(needed);
+                // One file is all or nothing: there is nothing to choose.
+                if files.len() > 1 {
+                    let weak = dialog.downgrade();
+                    file_item::fill(&imp.files, &files, None, move || {
+                        if let Some(dialog) = weak.upgrade() {
+                            dialog.files_toggled();
+                        }
+                    });
+                    imp.files_group.set_visible(true);
+                    // The dialog keeps the height it opened with unless told otherwise.
+                    if let Some(content) = dialog.child() {
+                        let width = dialog.content_width();
+                        let (_, natural, _, _) = content.measure(gtk::Orientation::Vertical, width);
+                        dialog.set_content_height(natural);
+                    }
+                }
+                dialog.check_space();
             }
         ));
+    }
+
+    fn files_toggled(&self) {
+        let imp = self.imp();
+        imp.needed_bytes.set(file_item::selected_size(&imp.files));
+        self.check_space();
+        let some_selected =
+            file_item::selected_files(&imp.files).is_none_or(|selected| !selected.is_empty());
+        imp.add_button.set_sensitive(some_selected);
     }
 
     fn set_folder(&self, folder: PathBuf) {
@@ -280,10 +330,15 @@ impl AddTorrentDialog {
             let hash = crate::engine::hex(magnet.info_hash());
             let name = magnet_name(&uri);
             let uri = crate::engine::name_nameless_magnet(&uri);
-            window.start_torrent(hash, name, uri, folder, sequential, start_now);
+            window.start_torrent(hash, name, uri, folder, sequential, None, start_now);
             return;
         };
 
+        let selected = imp
+            .files_group
+            .is_visible()
+            .then(|| file_item::selected_files(&imp.files))
+            .flatten();
         self.close();
         let data_dir = window.data_dir();
         glib::spawn_future_local(async move {
@@ -299,6 +354,7 @@ impl AddTorrentDialog {
                     path.to_string_lossy().into_owned(),
                     folder,
                     sequential,
+                    selected,
                     start_now,
                 ),
                 None => window.show_toast(

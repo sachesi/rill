@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use super::models::{AppSettings, SavedTorrent};
 
-const SCHEMA_VERSION: i32 = 4;
+const SCHEMA_VERSION: i32 = 5;
 
 #[derive(Debug)]
 pub struct Database {
@@ -93,6 +93,10 @@ impl Database {
                     [],
                 )?;
             }
+            if from_version < 5 {
+                self.conn
+                    .execute("ALTER TABLE torrents ADD COLUMN selected_files TEXT", [])?;
+            }
             self.conn
                 .execute("UPDATE schema_version SET version = ?1", [SCHEMA_VERSION])?;
             Ok(())
@@ -122,7 +126,8 @@ impl Database {
                 last_active INTEGER NOT NULL,
                 total_pieces INTEGER NOT NULL DEFAULT 0,
                 downloaded_pieces INTEGER NOT NULL DEFAULT 0,
-                sequential INTEGER NOT NULL DEFAULT 0
+                sequential INTEGER NOT NULL DEFAULT 0,
+                selected_files TEXT
             )",
             [],
         )?;
@@ -153,8 +158,9 @@ impl Database {
         self.conn.execute(
             "INSERT OR REPLACE INTO torrents 
              (info_hash, name, uri, state, downloaded, total, output_dir, 
-              added_at, completed_at, last_active, total_pieces, downloaded_pieces, sequential)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+              added_at, completed_at, last_active, total_pieces, downloaded_pieces, sequential,
+              selected_files)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 torrent.info_hash,
                 torrent.name,
@@ -169,6 +175,7 @@ impl Database {
                 torrent.total_pieces as i64,
                 torrent.downloaded_pieces as i64,
                 torrent.sequential as i32,
+                torrent.selected_files.as_deref().map(StoredSelection),
             ],
         )?;
         Ok(())
@@ -180,7 +187,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT info_hash, name, uri, state, downloaded, total, 
                     output_dir, added_at, completed_at, last_active,
-                    total_pieces, downloaded_pieces, sequential
+                    total_pieces, downloaded_pieces, sequential, selected_files
              FROM torrents
              ORDER BY last_active DESC",
         )?;
@@ -201,6 +208,9 @@ impl Database {
                     total_pieces: row.get::<_, i64>(10)? as u64,
                     downloaded_pieces: row.get::<_, i64>(11)? as u64,
                     sequential: row.get::<_, i32>(12)? != 0,
+                    selected_files: row
+                        .get::<_, Option<StoredSelection<Vec<usize>>>>(13)?
+                        .map(|s| s.0),
                 })
             })?
             .collect::<SqlResult<Vec<_>>>()?;
@@ -214,7 +224,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT info_hash, name, uri, state, downloaded, total,
                     output_dir, added_at, completed_at, last_active,
-                    total_pieces, downloaded_pieces, sequential
+                    total_pieces, downloaded_pieces, sequential, selected_files
              FROM torrents
              WHERE info_hash = ?1",
         )?;
@@ -234,6 +244,9 @@ impl Database {
                 total_pieces: row.get::<_, i64>(10)? as u64,
                 downloaded_pieces: row.get::<_, i64>(11)? as u64,
                 sequential: row.get::<_, i32>(12)? != 0,
+                selected_files: row
+                    .get::<_, Option<StoredSelection<Vec<usize>>>>(13)?
+                    .map(|s| s.0),
             })
         })?;
 
@@ -347,6 +360,19 @@ impl Database {
         Ok(())
     }
 
+    /// Keeps which files of a torrent to download; `None` for all of them.
+    pub fn update_torrent_selected_files(
+        &self,
+        info_hash: &str,
+        selected_files: Option<&[usize]>,
+    ) -> SqlResult<()> {
+        self.conn.execute(
+            "UPDATE torrents SET selected_files = ?1 WHERE info_hash = ?2",
+            rusqlite::params![selected_files.map(StoredSelection), info_hash],
+        )?;
+        Ok(())
+    }
+
     /// Set setting value
     pub fn set_setting(&self, key: &str, value: impl ToSql) -> SqlResult<()> {
         self.conn.execute(
@@ -449,6 +475,26 @@ impl FromSql for StoredPath<PathBuf> {
     }
 }
 
+/// The indices of the files to download, as the database keeps them: "0,2,5".
+struct StoredSelection<S>(S);
+
+impl ToSql for StoredSelection<&[usize]> {
+    fn to_sql(&self) -> SqlResult<ToSqlOutput<'_>> {
+        let text = self.0.iter().map(usize::to_string).collect::<Vec<_>>();
+        Ok(ToSqlOutput::Owned(Value::Text(text.join(","))))
+    }
+}
+
+impl FromSql for StoredSelection<Vec<usize>> {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let text = value.as_str()?;
+        text.split(',')
+            .map(|index| index.parse().map_err(|e| FromSqlError::Other(Box::new(e))))
+            .collect::<FromSqlResult<_>>()
+            .map(Self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,6 +586,7 @@ mod tests {
         let (db, _dir) = open("round-trip");
         let mut saved = torrent("aa", "paused");
         saved.sequential = true;
+        saved.selected_files = Some(vec![0, 2, 10]);
         db.save_torrent(&saved).unwrap();
 
         let loaded = db.load_torrent("aa").unwrap().unwrap();
@@ -557,6 +604,7 @@ mod tests {
             (10, 100, 4, 1)
         );
         assert_eq!((loaded.added_at, loaded.sequential), (saved.added_at, true));
+        assert_eq!(loaded.selected_files, Some(vec![0, 2, 10]));
         assert!(db.load_torrent("bb").unwrap().is_none());
         assert_eq!(db.load_torrents().unwrap().len(), 1);
     }
@@ -578,10 +626,66 @@ mod tests {
         let loaded = db.load_torrent("aa").unwrap().unwrap();
         assert_eq!(loaded.name, "Real Name");
         assert!(loaded.sequential);
+        assert_eq!(loaded.selected_files, None);
         assert_eq!(
             (loaded.state.as_str(), loaded.completed_at),
             ("completed", Some(9))
         );
+    }
+
+    #[test]
+    fn the_selected_files_are_kept_until_all_are_selected_again() {
+        let (db, _dir) = open("selection");
+        db.save_torrent(&torrent("aa", "paused")).unwrap();
+        let selected = |db: &Database| db.load_torrent("aa").unwrap().unwrap().selected_files;
+
+        db.update_torrent_selected_files("aa", Some(&[1])).unwrap();
+        assert_eq!(selected(&db), Some(vec![1]));
+        db.update_torrent_selected_files("aa", None).unwrap();
+        assert_eq!(selected(&db), None);
+    }
+
+    #[test]
+    fn migrate_v4_adds_selected_files_and_keeps_the_torrents() {
+        let path = temp_db_path("migrate-v4");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+                 INSERT INTO schema_version (version) VALUES (4);
+                 CREATE TABLE torrents (
+                    info_hash TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    uri TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    downloaded INTEGER NOT NULL,
+                    total INTEGER NOT NULL,
+                    output_dir TEXT NOT NULL,
+                    added_at INTEGER NOT NULL,
+                    completed_at INTEGER,
+                    last_active INTEGER NOT NULL,
+                    total_pieces INTEGER NOT NULL DEFAULT 0,
+                    downloaded_pieces INTEGER NOT NULL DEFAULT 0,
+                    sequential INTEGER NOT NULL DEFAULT 0
+                 );
+                 INSERT INTO torrents VALUES
+                    ('aa', 'name', 'uri', 'paused', 1, 2, '/downloads', 0, NULL, 0, 0, 0, 1);
+                 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+            )
+            .unwrap();
+        }
+
+        let db = Database::open(&path).unwrap();
+        let version: i32 = db
+            .conn
+            .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+        let loaded = db.load_torrent("aa").unwrap().unwrap();
+        assert!(loaded.sequential);
+        assert_eq!(loaded.selected_files, None);
+        drop(db);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -682,5 +786,6 @@ mod tests {
             .unwrap();
         assert_eq!(version, SCHEMA_VERSION);
         assert!(column_exists(&db.conn, "torrents", "sequential"));
+        assert!(column_exists(&db.conn, "torrents", "selected_files"));
     }
 }

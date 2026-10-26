@@ -141,6 +141,8 @@ struct TorrentEntry {
     output_dir: PathBuf,
     ui_tx: Sender<UiEvent>,
     sequential: Arc<AtomicBool>,
+    /// The indices of the files to download, or `None` for all of them.
+    selected_files: Option<Vec<usize>>,
     /// The port the torrent listens on while it runs; 0 when mtorrent derives it.
     port: u16,
 }
@@ -151,6 +153,7 @@ impl TorrentEntry {
         uri: String,
         output_dir: PathBuf,
         sequential: bool,
+        selected_files: Option<Vec<usize>>,
         ui_tx: Sender<UiEvent>,
     ) -> Self {
         Self {
@@ -162,6 +165,7 @@ impl TorrentEntry {
             output_dir,
             ui_tx,
             sequential: Arc::new(AtomicBool::new(sequential)),
+            selected_files,
             port: 0,
         }
     }
@@ -201,6 +205,7 @@ struct StartCmd {
     stop_flag: Arc<AtomicU8>,
     ui_tx: Sender<UiEvent>,
     sequential: Arc<AtomicBool>,
+    selected_files: Option<Vec<usize>>,
     pwp_port: u16,
 }
 
@@ -304,6 +309,7 @@ impl TorrentEngine {
 
     /// Starts the torrent `uri` names, known by its `info_hash`, so that the same content
     /// added from a magnet link and from a file is one torrent.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &self,
         info_hash: String,
@@ -311,6 +317,7 @@ impl TorrentEngine {
         uri: String,
         output_dir: PathBuf,
         sequential: bool,
+        selected_files: Option<Vec<usize>>,
         ui_tx: Sender<UiEvent>,
     ) {
         let mut map = lock_recover(&self.active, "active map");
@@ -343,7 +350,14 @@ impl TorrentEngine {
                 torrent.sequential.store(sequential, Ordering::Relaxed);
                 torrent
             }
-            None => TorrentEntry::new(name, uri, output_dir, sequential, ui_tx.clone()),
+            None => TorrentEntry::new(
+                name,
+                uri,
+                output_dir,
+                sequential,
+                selected_files,
+                ui_tx.clone(),
+            ),
         };
         // Immediately notify UI of the new downloading torrent
         let update = torrent.idle_update(&info_hash, TorrentUiState::Downloading);
@@ -366,6 +380,7 @@ impl TorrentEngine {
     }
 
     /// Adds a torrent in a paused state without starting the download.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_paused(
         &self,
         info_hash: String,
@@ -373,6 +388,7 @@ impl TorrentEngine {
         uri: String,
         output_dir: PathBuf,
         sequential: bool,
+        selected_files: Option<Vec<usize>>,
         ui_tx: Sender<UiEvent>,
     ) {
         self.add_paused_silent(
@@ -381,6 +397,7 @@ impl TorrentEngine {
             uri,
             output_dir,
             sequential,
+            selected_files,
             ui_tx.clone(),
         );
         // Notify the UI of the new paused torrent, or of the (possibly changed)
@@ -393,6 +410,7 @@ impl TorrentEngine {
     }
 
     /// Adds a torrent in a paused state, without telling the window.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_paused_silent(
         &self,
         info_hash: String,
@@ -400,6 +418,7 @@ impl TorrentEngine {
         uri: String,
         output_dir: PathBuf,
         sequential: bool,
+        selected_files: Option<Vec<usize>>,
         ui_tx: Sender<UiEvent>,
     ) {
         let mut map = lock_recover(&self.saved, "saved map");
@@ -418,7 +437,7 @@ impl TorrentEngine {
         );
         map.insert(
             info_hash,
-            TorrentEntry::new(name, uri, output_dir, sequential, ui_tx),
+            TorrentEntry::new(name, uri, output_dir, sequential, selected_files, ui_tx),
         );
     }
 
@@ -449,6 +468,7 @@ impl TorrentEngine {
             stop_flag: Arc::clone(&stop_flag),
             ui_tx: torrent.ui_tx.clone(),
             sequential: Arc::clone(&torrent.sequential),
+            selected_files: torrent.selected_files.clone(),
             pwp_port: port,
         };
         if let Err(e) = self.cmd_tx.try_send(cmd) {
@@ -537,6 +557,49 @@ impl TorrentEngine {
         if let Some(torrent) = saved_map.get(info_hash) {
             torrent.sequential.store(sequential, Ordering::Relaxed);
         }
+    }
+
+    /// Sets which files of a torrent to download, `None` for all of them. A running torrent
+    /// is restarted, since mtorrent takes the selection when the download starts.
+    pub fn set_selected_files(&self, info_hash: &str, selected_files: Option<Vec<usize>>) {
+        log::info!("Selecting files of {}: {:?}", info_hash, selected_files);
+        let mut active_map = lock_recover(&self.active, "active map");
+        if let Some(torrent) = active_map.get(info_hash) {
+            if torrent.selected_files == selected_files {
+                return;
+            }
+            let mut torrent = active_map.remove(info_hash).expect("just found above");
+            torrent.halt(Stop::Restart);
+            torrent.selected_files = selected_files;
+            log::info!(
+                "Restarting torrent to apply the file selection: {}",
+                info_hash
+            );
+            if let Err(err) = self.launch(info_hash, torrent, &mut active_map) {
+                let (torrent, e) = *err;
+                log::error!("Failed to queue torrent restart {}: {}", info_hash, e);
+                let _ = torrent.ui_tx.try_send(UiEvent::Finished {
+                    info_hash: info_hash.to_string(),
+                    error: Some("Engine unavailable".into()),
+                });
+                drop(active_map);
+                lock_recover(&self.saved, "saved map").insert(info_hash.to_string(), torrent);
+            }
+            return;
+        }
+        drop(active_map);
+        if let Some(torrent) = lock_recover(&self.saved, "saved map").get_mut(info_hash) {
+            torrent.selected_files = selected_files;
+        }
+    }
+
+    /// The indices of the files a torrent downloads, or `None` for all of them.
+    pub fn selected_files(&self, info_hash: &str) -> Option<Vec<usize>> {
+        [&self.active, &self.saved].into_iter().find_map(|map| {
+            lock_recover(map, "torrent map")
+                .get(info_hash)
+                .map(|torrent| torrent.selected_files.clone())
+        })?
     }
 
     /// Toggles the torrent between paused and downloading states.
@@ -648,6 +711,7 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
         stop_flag,
         ui_tx,
         sequential,
+        selected_files,
         pwp_port,
     } = cmd;
     // mtorrent derives the metainfo filename and the download subfolder from the
@@ -668,11 +732,18 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
     // Files removed since the last run would otherwise count as downloaded: mtorrent takes
     // the pieces its progress file lists without reading them again. No run of this
     // torrent is left to write that file.
-    let (check_uri, check_dir) = (uri.clone(), output_dir.clone());
+    let (check_uri, check_dir, check_files) =
+        (uri.clone(), output_dir.clone(), selected_files.clone());
     let _ = tokio::task::spawn_blocking(move || {
         let layout = crate::torrent_paths::content_layout(&check_uri, &check_dir);
         if let Some(layout) = layout {
-            crate::torrent_paths::find_missing_content(&check_uri, &check_dir, Some(&layout), true);
+            crate::torrent_paths::find_missing_content(
+                &check_uri,
+                &check_dir,
+                Some(&layout),
+                check_files.as_deref(),
+                true,
+            );
         }
     })
     .await;
@@ -709,7 +780,10 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
             app::main::DownloadStrategy::RarestFirst
         },
         mode: app::main::Mode::Leech,
-        file_selection: app::main::FileSelection::All,
+        file_selection: selected_files.map_or(
+            app::main::FileSelection::All,
+            app::main::FileSelection::Only,
+        ),
     };
     let ctx = app::main::Context {
         dht_handle: Some(shared.dht),
@@ -922,6 +996,7 @@ mod tests {
             uri,
             h.output_dir(),
             sequential,
+            None,
             h.tx.clone(),
         );
         hash
@@ -1014,6 +1089,32 @@ mod tests {
     }
 
     #[test]
+    fn selecting_files_restarts_a_running_torrent_and_is_kept_for_a_paused_one() {
+        let h = Harness::new("engine-selection", 0);
+        let hash = start(&h, "Name", magnet_to_nowhere(10), false);
+        h.wait_for_update(&hash, WAIT, |_| true);
+        let run = |hash: &str| {
+            let map = lock_recover(&h.engine.active, "active map");
+            Arc::as_ptr(&map[hash].stop_flag)
+        };
+        let before = run(&hash);
+
+        h.engine.set_selected_files(&hash, Some(vec![1, 3]));
+        assert!(h.engine.is_active(&hash));
+        assert_ne!(run(&hash), before);
+        assert_eq!(h.engine.selected_files(&hash), Some(vec![1, 3]));
+
+        let after = run(&hash);
+        h.engine.set_selected_files(&hash, Some(vec![1, 3]));
+        assert_eq!(run(&hash), after);
+
+        h.engine.toggle(&hash);
+        h.engine.set_selected_files(&hash, None);
+        assert!(!h.engine.is_active(&hash));
+        assert_eq!(h.engine.selected_files(&hash), None);
+    }
+
+    #[test]
     fn a_torrent_added_paused_starts_when_resumed() {
         let h = Harness::new("engine-paused", 0);
         let uri = magnet_to_nowhere(3);
@@ -1024,6 +1125,7 @@ mod tests {
             uri,
             h.output_dir(),
             false,
+            None,
             h.tx.clone(),
         );
         let update = h.wait_for_update(&hash, WAIT, |_| true);
@@ -1045,6 +1147,7 @@ mod tests {
             uri.clone(),
             h.output_dir(),
             false,
+            None,
             h.tx.clone(),
         );
         let elsewhere = h.output_dir().join("elsewhere");
@@ -1054,6 +1157,7 @@ mod tests {
             uri,
             elsewhere,
             false,
+            None,
             h.tx.clone(),
         );
 

@@ -216,6 +216,17 @@ impl Storage {
             .map_err(|e| format!("Failed to update torrent sequential flag: {}", e))
     }
 
+    /// Keeps which files of a torrent to download; `None` for all of them.
+    pub fn update_torrent_selected_files(
+        &self,
+        info_hash: &str,
+        selected_files: Option<&[usize]>,
+    ) -> Result<(), String> {
+        self.db()
+            .update_torrent_selected_files(info_hash, selected_files)
+            .map_err(|e| format!("Failed to save the selected files: {}", e))
+    }
+
     /// Load app settings
     pub fn load_settings(&self) -> AppSettings {
         self.db().load_settings()

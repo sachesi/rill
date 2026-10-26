@@ -318,6 +318,16 @@ fn cached_layout(
     Some(layout)
 }
 
+/// Whether the files selected in `new` include one that `old` left out; `None` selects
+/// every file.
+fn gains_files(old: Option<&[usize]>, new: Option<&[usize]>) -> bool {
+    match (old, new) {
+        (None, _) => false,
+        (Some(_), None) => true,
+        (Some(old), Some(new)) => new.iter().any(|index| !old.contains(index)),
+    }
+}
+
 /// What the torrent list is ordered by.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SortOrder {
@@ -533,6 +543,7 @@ impl RillWindow {
 
     /// Hands a torrent, known by `hash`, to the engine, running or paused. The row
     /// appears with the engine's first update.
+    #[allow(clippy::too_many_arguments)]
     pub fn start_torrent(
         &self,
         hash: String,
@@ -540,6 +551,7 @@ impl RillWindow {
         uri: String,
         dir: PathBuf,
         sequential: bool,
+        selected_files: Option<Vec<usize>>,
         start_now: bool,
     ) {
         // Added again, from the same link or file: it keeps the folder its content is in and
@@ -553,11 +565,25 @@ impl RillWindow {
             return;
         }
         if start_now {
-            self.engine()
-                .start(hash.clone(), name, uri, dir, sequential, self.sender());
+            self.engine().start(
+                hash.clone(),
+                name,
+                uri,
+                dir,
+                sequential,
+                selected_files,
+                self.sender(),
+            );
         } else {
-            self.engine()
-                .add_paused(hash.clone(), name, uri, dir, sequential, self.sender());
+            self.engine().add_paused(
+                hash.clone(),
+                name,
+                uri,
+                dir,
+                sequential,
+                selected_files,
+                self.sender(),
+            );
         }
         // A torrent deleted earlier in this session may come back.
         let mut torrents = self.imp().torrents.borrow_mut();
@@ -785,6 +811,11 @@ impl RillWindow {
         if !matches!(row.state(), TorrentUiState::Paused | TorrentUiState::Error) {
             return;
         }
+        self.run_again(hash, &row);
+    }
+
+    fn run_again(&self, hash: &str, row: &TorrentRow) {
+        let imp = self.imp();
         imp.torrents.borrow_mut().user_start(hash);
         if let Some(mut update) = row.latest() {
             update.state = TorrentUiState::Downloading;
@@ -792,6 +823,51 @@ impl RillWindow {
         }
         self.engine().toggle(hash);
         self.check_queue();
+    }
+
+    /// Downloads only the `selected` files of a torrent from now on, or all of them with
+    /// `None`. A completed torrent that gains a file runs again to download it.
+    pub fn set_selected_files(&self, hash: &str, selected: Option<Vec<usize>>) {
+        let old = self.engine().selected_files(hash);
+        if old == selected {
+            return;
+        }
+        let gained = gains_files(old.as_deref(), selected.as_deref());
+        let row = self.imp().rows.borrow().get(hash).cloned();
+        let completed = row
+            .as_ref()
+            .is_some_and(|row| row.state() == TorrentUiState::Completed);
+        // Its run is over, but the engine still counts it as running, and would start it
+        // again for the new selection.
+        if completed && self.engine().is_active(hash) {
+            self.engine().toggle(hash);
+        }
+        let running = self.engine().is_active(hash);
+        self.engine().set_selected_files(hash, selected.clone());
+        if let Some(row) = row.filter(|_| gained) {
+            if completed {
+                self.run_again(hash, &row);
+            } else if running {
+                // The run ending removes the files it was told to leave out, and the
+                // newly selected ones are among them until the next run makes them again.
+                row.expect_new_files();
+            }
+        }
+
+        let key = hash.to_string();
+        let saved = self
+            .storage()
+            .query(move |s| s.update_torrent_selected_files(&key, selected.as_deref()));
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = window)]
+            self,
+            async move {
+                if let Err(e) = saved.await.and_then(|r| r) {
+                    log::warn!("Failed to save the selected files: {e}");
+                    window.show_toast(&gettext("Could not save the selected files"));
+                }
+            }
+        ));
     }
 
     /// Asks where a torrent's content should go from now on.
@@ -1013,7 +1089,8 @@ impl RillWindow {
         let Some(update) = row.latest() else {
             return;
         };
-        let dialog = TorrentInfoDialog::new(&update, self.engine_rc(), self.storage().clone());
+        let dialog =
+            TorrentInfoDialog::new(self, &update, self.engine_rc(), self.storage().clone());
         dialog.connect_closed(glib::clone!(
             #[weak(rename_to = window)]
             self,
@@ -1200,6 +1277,7 @@ impl RillWindow {
         record.total_pieces = update.total_pieces as u64;
         record.downloaded_pieces = update.downloaded_pieces as u64;
         record.sequential = update.sequential;
+        record.selected_files = self.engine().selected_files(&update.info_hash);
         self.imp()
             .torrents
             .borrow_mut()
@@ -1316,6 +1394,7 @@ impl RillWindow {
                 torrent.uri.clone(),
                 torrent.output_dir.clone(),
                 torrent.sequential,
+                torrent.selected_files.clone(),
                 tx.clone(),
             );
             let row = self.make_row(&torrent.info_hash);
@@ -1361,7 +1440,7 @@ impl RillWindow {
         // A failed torrent says so already, one with nothing downloaded has nothing to lose,
         // one already found missing stays so until it runs again, and one whose run has yet
         // to make its files is not missing them.
-        let torrents: Vec<(String, TorrentUiState, UiUpdate)> = imp
+        let torrents: Vec<(String, TorrentUiState, UiUpdate, Option<Vec<usize>>)> = imp
             .rows
             .borrow()
             .iter()
@@ -1373,7 +1452,10 @@ impl RillWindow {
                     && row.files_expected()
                     && (state == TorrentUiState::Completed || row.progress().0 > 0)
             })
-            .filter_map(|(hash, row)| Some((hash.clone(), row.state(), row.latest()?)))
+            .filter_map(|(hash, row)| {
+                let selected = self.engine().selected_files(hash);
+                Some((hash.clone(), row.state(), row.latest()?, selected))
+            })
             .collect();
         let layouts = imp.layouts.clone();
         glib::spawn_future_local(glib::clone!(
@@ -1383,7 +1465,7 @@ impl RillWindow {
                 let missing = gio::spawn_blocking(move || {
                     torrents
                         .into_iter()
-                        .filter_map(|(hash, state, update)| {
+                        .filter_map(|(hash, state, update, selected)| {
                             let layout = cached_layout(&layouts, &hash, &update);
                             // Only looked at: a running torrent may be writing its progress
                             // file, and the engine corrects it before the next run anyway.
@@ -1391,6 +1473,7 @@ impl RillWindow {
                                 &update.uri,
                                 &update.output_dir,
                                 layout.as_deref(),
+                                selected.as_deref(),
                                 false,
                             )?;
                             Some((hash, state, update.output_dir, missing))
@@ -1578,8 +1661,16 @@ impl RillWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::{SortKey, SortOrder, compare};
+    use super::{SortKey, SortOrder, compare, gains_files};
     use std::cmp::Ordering;
+
+    #[test]
+    fn a_selection_gains_files_only_by_taking_in_one_it_left_out() {
+        assert!(!gains_files(None, Some(&[0])));
+        assert!(gains_files(Some(&[0]), None));
+        assert!(gains_files(Some(&[0, 2]), Some(&[1])));
+        assert!(!gains_files(Some(&[0, 2]), Some(&[2])));
+    }
 
     fn key(name: &str, total: u64, downloaded: u64, added: i64) -> SortKey {
         SortKey {

@@ -12,6 +12,7 @@
       <li>Transfers grouped by what they are doing, with progress, speed and peers at a glance</li>
       <li>Details of each torrent: a map of the pieces already on disk, its files, connected peers and trackers</li>
       <li>Sequential downloading per torrent, so a video can be watched while it arrives</li>
+      <li>A choice of which files of a torrent to download, when adding it or later</li>
       <li>A limit on how many torrents download at once, with the rest queued</li>
       <li>Transfers continue in the background when the window is closed, on desktops with a system tray</li>
     </ul>

@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: rill\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/rill/issues\n"
-"POT-Creation-Date: 2026-09-16 11:28+0300\n"
+"POT-Creation-Date: 2026-10-26 18:40+0200\n"
 "PO-Revision-Date: 2026-09-14 00:00+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian\n"
@@ -27,7 +27,7 @@ msgid "BitTorrent Client"
 msgstr "Клієнт BitTorrent"
 
 #: data/io.github.sachesi.rill.desktop:4
-#: data/io.github.sachesi.rill.metainfo.xml:7 src/application.rs:163
+#: data/io.github.sachesi.rill.metainfo.xml:7 src/application.rs:167
 #: src/tray.rs:38
 #, no-c-format
 msgid "Download files over BitTorrent"
@@ -77,10 +77,15 @@ msgstr ""
 "поки воно завантажується"
 
 #: data/io.github.sachesi.rill.metainfo.xml:15
+msgid ""
+"A choice of which files of a torrent to download, when adding it or later"
+msgstr "Вибір файлів торента для завантаження, під час додавання або пізніше"
+
+#: data/io.github.sachesi.rill.metainfo.xml:16
 msgid "A limit on how many torrents download at once, with the rest queued"
 msgstr "Обмеження кількості одночасних завантажень, решта чекає в черзі"
 
-#: data/io.github.sachesi.rill.metainfo.xml:16
+#: data/io.github.sachesi.rill.metainfo.xml:17
 msgid ""
 "Transfers continue in the background when the window is closed, on desktops "
 "with a system tray"
@@ -88,27 +93,68 @@ msgstr ""
 "Передавання тривають у фоні після закриття вікна, якщо в середовищі є "
 "системний лоток"
 
-#: data/io.github.sachesi.rill.metainfo.xml:22
+#: data/io.github.sachesi.rill.metainfo.xml:23
 msgid "Torrents downloading, paused and finished"
 msgstr "Торенти, що завантажуються, призупинені та завершені"
 
-#: data/io.github.sachesi.rill.metainfo.xml:26
+#: data/io.github.sachesi.rill.metainfo.xml:27
 msgid "Adding a torrent file"
 msgstr "Додавання торент-файлу"
 
-#: data/io.github.sachesi.rill.metainfo.xml:30
+#: data/io.github.sachesi.rill.metainfo.xml:31
 msgid "Progress, speed and peers of a torrent"
 msgstr "Поступ, швидкість і піри торента"
 
-#: data/io.github.sachesi.rill.metainfo.xml:34
+#: data/io.github.sachesi.rill.metainfo.xml:35
 msgid "The files of a torrent"
 msgstr "Файли торента"
 
-#: data/io.github.sachesi.rill.metainfo.xml:38 ui/shortcuts_dialog.ui:33
+#: data/io.github.sachesi.rill.metainfo.xml:39 ui/shortcuts_dialog.ui:33
 msgid "Preferences"
 msgstr "Налаштування"
 
-#: data/io.github.sachesi.rill.metainfo.xml:62
+#: data/io.github.sachesi.rill.metainfo.xml:63
+msgid ""
+"Rill now uses mtorrent 0.9.0. A paused torrent closes its connections and "
+"stops its work before it ends, rather than being cut off in the middle."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:64
+msgid ""
+"The window no longer waits on the disk or the database once it is up, and "
+"the DHT nodes Rill knows are saved on quit, so the next start finds peers "
+"sooner. Cancel in selection mode works again, adding a torrent that is "
+"already in the list resumes it instead of starting a second copy, and "
+"a .torrent file with sizes that make no sense no longer brings down a "
+"worker. Download folders whose names are not UTF-8 are kept as they are."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:69
+msgid ""
+"Rill finds peers through the DHT much sooner. It sent no more than ten DHT "
+"queries at a time, so searching for a torrent's peers waited behind the "
+"node's own upkeep and often found none. Rill now uses mtorrent 0.7.2 and "
+"starts fewer threads."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:70
+msgid ""
+"Uninstalling a build from source refreshes the icon cache, so removing a per-"
+"user install no longer leaves Rill without icons when it is also installed "
+"for the whole system."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:75
+msgid ""
+"Rill now uses mtorrent 0.6.1, which closes a torrent's uTP connections "
+"before the torrent stops. A torrent that is paused and resumed, or switched "
+"to downloading in order, keeps its port instead of moving to another one, "
+"and its peers learn at once that the connection has ended. A tracker that "
+"was already removed and a message a peer sends that mtorrent does not know "
+"are no longer reported as errors."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:80
 msgid ""
 "Torrents pick up where they left off after Rill restarts. The list can be "
 "ordered by name, size or progress, every torrent can be paused or resumed at "
@@ -123,7 +169,7 @@ msgstr ""
 "завантаженими файлами. Rill попереджає, коли торенту потрібно більше місця, "
 "ніж є в його теці."
 
-#: data/io.github.sachesi.rill.metainfo.xml:63
+#: data/io.github.sachesi.rill.metainfo.xml:81
 msgid ""
 "A torrent whose files were removed is paused and marked as having files not "
 "found, instead of showing as finished, and resuming it downloads them again. "
@@ -135,10 +181,10 @@ msgstr ""
 "файли не знайдено, замість того щоб показуватися завершеним, а відновлення "
 "завантажує їх знову. Торент, який ви запускаєте, коли досягнуто обмеження "
 "завантажень, однаково запускається, а завантаження, розпочате останнім, "
-"чекає в черзі з позначкою «У черзі». «Відновити всі» запускає торенти лише в"
-" межах обмеження."
+"чекає в черзі з позначкою «У черзі». «Відновити всі» запускає торенти лише в "
+"межах обмеження."
 
-#: data/io.github.sachesi.rill.metainfo.xml:64
+#: data/io.github.sachesi.rill.metainfo.xml:82
 msgid ""
 "Rill now uses mtorrent 0.6.0. Each running torrent listens on a port of its "
 "own, the DHT keeps working when another client holds port 6881, and magnet "
@@ -146,12 +192,12 @@ msgid ""
 "on every update, which could stall the display with many torrents and peers."
 msgstr ""
 "Rill тепер використовує mtorrent 0.6.0. Кожен запущений торент слухає на "
-"власному порту, DHT працює й тоді, коли порт 6881 зайнятий іншим клієнтом, а"
-" магнет-посилання без назви отримують власну теку. Вікно більше не "
+"власному порту, DHT працює й тоді, коли порт 6881 зайнятий іншим клієнтом, а "
+"магнет-посилання без назви отримують власну теку. Вікно більше не "
 "перемальовується за кожного оновлення, через що з багатьма торентами й "
 "пірами відображення могло зависати."
 
-#: data/io.github.sachesi.rill.metainfo.xml:69
+#: data/io.github.sachesi.rill.metainfo.xml:87
 msgid ""
 "The application id is now io.github.sachesi.rill. The dialogs adapt to "
 "narrow windows and open as bottom sheets on phones, and the details of a "
@@ -163,7 +209,7 @@ msgstr ""
 "аркуші, а вкладки подробиць торента переходять униз, коли вгорі для них "
 "немає місця."
 
-#: data/io.github.sachesi.rill.metainfo.xml:70
+#: data/io.github.sachesi.rill.metainfo.xml:88
 msgid ""
 "The add dialog shows the folder a torrent will be saved to. Selection mode "
 "has a bar with Resume, Pause and Delete, a search that matches nothing says "
@@ -177,7 +223,7 @@ msgstr ""
 "контекстне меню торента відкривається клавішею меню. Зміна кількості "
 "одночасних завантажень діє одразу."
 
-#: data/io.github.sachesi.rill.metainfo.xml:71
+#: data/io.github.sachesi.rill.metainfo.xml:89
 msgid ""
 "Preferences no longer offer bandwidth limits, an upload limit, a seeding "
 "ratio or a logging switch: none of them had any effect on transfers. The "
@@ -189,7 +235,7 @@ msgstr ""
 "передавання. Сторінка «Трекери» більше не позначає кожен трекер підключеним, "
 "а сторінка «Файли» більше не показує прапорці, які нічого не робили."
 
-#: data/io.github.sachesi.rill.metainfo.xml:76
+#: data/io.github.sachesi.rill.metainfo.xml:94
 msgid ""
 "The same torrent added as a magnet link and as a file is one transfer, not "
 "two. A torrent you pause is no longer resumed by the download queue, a "
@@ -205,7 +251,7 @@ msgstr ""
 "завершеним. Посилання і файли, які не є торентами, вікно додавання відхиляє, "
 "замість того щоб створювати передавання, яке ніколи не почнеться."
 
-#: data/io.github.sachesi.rill.metainfo.xml:77
+#: data/io.github.sachesi.rill.metainfo.xml:95
 msgid ""
 "Magnet links can be dropped on the window, closing the window quits when "
 "there is no system tray to reopen it from, and more of the interface is "
@@ -215,14 +261,14 @@ msgstr ""
 "роботу, якщо немає системного лотка, з якого його можна відкрити знову, і "
 "більше інтерфейсу перекладено."
 
-#: data/io.github.sachesi.rill.metainfo.xml:82
+#: data/io.github.sachesi.rill.metainfo.xml:100
 msgid ""
 "More reliable tracking of each torrent's state across pauses and restarts."
 msgstr ""
 "Надійніше відстеження стану кожного торента між призупиненнями і "
 "перезапусками."
 
-#: data/io.github.sachesi.rill.metainfo.xml:87
+#: data/io.github.sachesi.rill.metainfo.xml:105
 msgid ""
 "Ukrainian translation. The source of a torrent can be copied from its "
 "details, and its folder opened from the context menu. File paths inside a "
@@ -234,11 +280,11 @@ msgstr ""
 "вказувати за межі теки завантажень, а трекери на локальних адресах каналу "
 "відхиляються."
 
-#: data/io.github.sachesi.rill.metainfo.xml:92
+#: data/io.github.sachesi.rill.metainfo.xml:110
 msgid "A new application icon."
 msgstr "Новий значок застосунку."
 
-#: data/io.github.sachesi.rill.metainfo.xml:97
+#: data/io.github.sachesi.rill.metainfo.xml:115
 msgid ""
 "Database writes and torrent metadata parsing no longer run on the thread "
 "that draws the window."
@@ -246,161 +292,171 @@ msgstr ""
 "Запис до бази даних і розбір метаданих торентів більше не виконуються в "
 "потоці, що малює вікно."
 
-#: data/io.github.sachesi.rill.metainfo.xml:102
+#: data/io.github.sachesi.rill.metainfo.xml:120
 msgid "First release."
 msgstr "Перший випуск."
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:165
+#: src/application.rs:169
 #, no-c-format
 msgid "translator-credits"
 msgstr "sachesi <xsachesi@pm.me>"
 
-#: src/dialogs/add_torrent.rs:120 ui/shortcuts_dialog.ui:21
+#: src/dialogs/add_torrent.rs:140 ui/shortcuts_dialog.ui:21
 #, no-c-format
 msgid "Add Magnet Link"
 msgstr "Додати magnet-посилання"
 
-#: src/dialogs/add_torrent.rs:127 src/window.rs:563 ui/shortcuts_dialog.ui:15
+#: src/dialogs/add_torrent.rs:147 src/window.rs:616 ui/shortcuts_dialog.ui:15
 #, no-c-format
 msgid "Add Torrent File"
 msgstr "Додати торент-файл"
 
-#: src/dialogs/add_torrent.rs:163
+#: src/dialogs/add_torrent.rs:248
 #, no-c-format
 msgid "Not enough space in this folder: %1 needed, %2 free"
 msgstr "Недостатньо місця в цій теці: потрібно %1, вільно %2"
 
-#: src/dialogs/add_torrent.rs:172 src/window.rs:558
+#: src/dialogs/add_torrent.rs:259 src/window.rs:611
 #, no-c-format
 msgid "Torrent Files"
 msgstr "Торент-файли"
 
-#: src/dialogs/add_torrent.rs:177
+#: src/dialogs/add_torrent.rs:264
 #, no-c-format
 msgid "Choose a Torrent File"
 msgstr "Виберіть торент-файл"
 
-#: src/dialogs/add_torrent.rs:199 src/window.rs:782
+#: src/dialogs/add_torrent.rs:286 src/window.rs:885
 #, no-c-format
 msgid "Choose a Download Folder"
 msgstr "Виберіть теку для завантаження"
 
-#: src/dialogs/add_torrent.rs:235
+#: src/dialogs/add_torrent.rs:325
 #, no-c-format
 msgid "This is not a magnet link"
 msgstr "Це не magnet-посилання"
 
 #. Translators: %s is a file name.
-#: src/dialogs/add_torrent.rs:264
+#: src/dialogs/add_torrent.rs:362
 #, no-c-format
 msgid "“%s” is not a torrent file"
 msgstr "«%s» не є торент-файлом"
 
-#: src/dialogs/preferences.rs:144
+#: src/dialogs/file_item.rs:186 ui/shortcuts_dialog.ui:68
+#, no-c-format
+msgid "Select All"
+msgstr "Вибрати все"
+
+#: src/dialogs/file_item.rs:187
+#, no-c-format
+msgid "Deselect All"
+msgstr "Зняти вибір"
+
+#: src/dialogs/preferences.rs:149
 #, no-c-format
 msgid "Errors"
 msgstr "Помилки"
 
-#: src/dialogs/preferences.rs:145
+#: src/dialogs/preferences.rs:150
 #, no-c-format
 msgid "Warnings"
 msgstr "Попередження"
 
-#: src/dialogs/preferences.rs:146
+#: src/dialogs/preferences.rs:151
 #, no-c-format
 msgid "Information"
 msgstr "Інформація"
 
-#: src/dialogs/preferences.rs:147
+#: src/dialogs/preferences.rs:152
 #, no-c-format
 msgid "Debugging"
 msgstr "Зневадження"
 
-#: src/dialogs/preferences.rs:148
+#: src/dialogs/preferences.rs:153
 #, no-c-format
 msgid "Everything"
 msgstr "Усе"
 
-#: src/dialogs/preferences.rs:174
+#: src/dialogs/preferences.rs:187
 #, no-c-format
 msgid "Could not save the setting"
 msgstr "Не вдалося зберегти налаштування"
 
-#: src/dialogs/preferences.rs:182
+#: src/dialogs/preferences.rs:197
 #, no-c-format
 msgid "Choose the Download Folder"
 msgstr "Виберіть теку завантажень"
 
-#: src/dialogs/torrent_info.rs:150
+#: src/dialogs/torrent_info.rs:169
 #, no-c-format
 msgid "No peers connected"
 msgstr "Немає підключених пірів"
 
-#: src/dialogs/torrent_info.rs:152
+#: src/dialogs/torrent_info.rs:171
 #, no-c-format
 msgid "No trackers"
 msgstr "Трекерів немає"
 
-#: src/dialogs/torrent_info.rs:173
+#: src/dialogs/torrent_info.rs:192
 #, no-c-format
 msgid "Source copied"
 msgstr "Джерело скопійовано"
 
 #. Translators: %s is a percentage, "42.0".
-#: src/dialogs/torrent_info.rs:219
+#: src/dialogs/torrent_info.rs:244
 #, no-c-format
 msgid "%s%"
 msgstr "%s%"
 
 #. Translators: state and percentage done, "Downloading · 42.0%".
-#: src/dialogs/torrent_info.rs:223
+#: src/dialogs/torrent_info.rs:248
 #, no-c-format
 msgid "Downloading · %s"
 msgstr "Завантаження · %s"
 
-#: src/dialogs/torrent_info.rs:225
+#: src/dialogs/torrent_info.rs:250
 #, no-c-format
 msgid "Paused · %s"
 msgstr "Призупинено · %s"
 
-#: src/dialogs/torrent_info.rs:226
+#: src/dialogs/torrent_info.rs:251
 #, no-c-format
 msgid "Completed"
 msgstr "Завершено"
 
-#: src/dialogs/torrent_info.rs:227
+#: src/dialogs/torrent_info.rs:252
 #, no-c-format
 msgid "Failed"
 msgstr "Помилка"
 
 #. Translators: progress of a torrent, "1.2 GiB of 4.0 GiB".
-#: src/dialogs/torrent_info.rs:232 src/torrent_row.rs:396
+#: src/dialogs/torrent_info.rs:257 src/torrent_row.rs:402
 #, no-c-format
 msgid "%1 of %2"
 msgstr "%1 з %2"
 
-#: src/dialogs/torrent_info.rs:236 src/torrent_row.rs:403
+#: src/dialogs/torrent_info.rs:261 src/torrent_row.rs:409
 #, no-c-format
 msgid "Waiting for metadata"
 msgstr "Очікування метаданих"
 
-#: src/dialogs/torrent_info.rs:257
+#: src/dialogs/torrent_info.rs:282
 #, no-c-format
 msgid "None"
 msgstr "Немає"
 
-#: src/dialogs/torrent_info.rs:258
+#: src/dialogs/torrent_info.rs:283
 #, no-c-format
 msgid "Unknown"
 msgstr "Невідомо"
 
-#: src/dialogs/torrent_info.rs:308
+#: src/dialogs/torrent_info.rs:333
 #, no-c-format
 msgid "Could not save the sequential setting"
 msgstr "Не вдалося зберегти налаштування послідовного завантаження"
 
-#: src/dialogs/torrent_info.rs:426
+#: src/dialogs/torrent_info.rs:483
 #, no-c-format
 msgid "Encrypted connection"
 msgstr "Зашифроване з’єднання"
@@ -411,60 +467,60 @@ msgstr "Зашифроване з’єднання"
 msgid "Torrent %s"
 msgstr "Торент %s"
 
-#: src/torrent_row.rs:254
+#: src/torrent_row.rs:260
 #, no-c-format
 msgid "Pause"
 msgstr "Призупинити"
 
-#: src/torrent_row.rs:260
+#: src/torrent_row.rs:266
 #, no-c-format
 msgid "Resume"
 msgstr "Відновити"
 
-#: src/torrent_row.rs:266 src/torrent_row.rs:272
+#: src/torrent_row.rs:272 src/torrent_row.rs:278
 #, no-c-format
 msgid "Delete"
 msgstr "Видалити"
 
-#: src/torrent_row.rs:319
+#: src/torrent_row.rs:325
 #, no-c-format
 msgid "Could not open the folder"
 msgstr "Не вдалося відкрити теку"
 
-#: src/torrent_row.rs:335
+#: src/torrent_row.rs:341
 #, no-c-format
 msgid "Magnet link copied"
 msgstr "Magnet-посилання скопійовано"
 
-#: src/torrent_row.rs:376
+#: src/torrent_row.rs:382
 #, no-c-format
 msgid "Queued"
 msgstr "У черзі"
 
 #. Translators: a torrent waiting for a free download slot; %s is its progress,
 #. "1.2 GiB of 4.0 GiB".
-#: src/torrent_row.rs:380
+#: src/torrent_row.rs:386
 #, no-c-format
 msgid "Queued · %s"
 msgstr "У черзі · %s"
 
-#: src/torrent_row.rs:386
+#: src/torrent_row.rs:392
 #, no-c-format
 msgid "Files not found"
 msgstr "Файли не знайдено"
 
 #. Translators: some of a torrents files are gone; %s is how much is left, "1.2 GiB".
-#: src/torrent_row.rs:389
+#: src/torrent_row.rs:395
 #, no-c-format
 msgid "Some files not found, %s left"
 msgstr "Частину файлів не знайдено, залишилось %s"
 
-#: src/torrent_row.rs:404
+#: src/torrent_row.rs:410
 #, no-c-format
 msgid "Size unknown"
 msgstr "Розмір невідомий"
 
-#: src/torrent_row.rs:413
+#: src/torrent_row.rs:419
 #, no-c-format
 msgid "%d peer"
 msgid_plural "%d peers"
@@ -526,17 +582,17 @@ msgstr ""
 "Завантаження тривають у фоні. Скористайтеся значком у системному лотку, щоб "
 "знову відкрити Rill або вийти з нього."
 
-#: src/window.rs:577
+#: src/window.rs:630
 #, no-c-format
 msgid "Only local files can be added"
 msgstr "Можна додавати лише локальні файли"
 
-#: src/window.rs:686
+#: src/window.rs:739
 #, no-c-format
 msgid "Select Torrents"
 msgstr "Вибір торентів"
 
-#: src/window.rs:688
+#: src/window.rs:741
 #, no-c-format
 msgid "%d selected"
 msgid_plural "%d selected"
@@ -544,28 +600,33 @@ msgstr[0] "Вибрано %d"
 msgstr[1] "Вибрано %d"
 msgstr[2] "Вибрано %d"
 
-#: src/window.rs:821
+#: src/window.rs:867
+#, no-c-format
+msgid "Could not save the selected files"
+msgstr "Не вдалося зберегти вибір файлів"
+
+#: src/window.rs:924
 #, no-c-format
 msgid "Could not move the files; the folder is unchanged"
 msgstr "Не вдалося перемістити файли; теку не змінено"
 
-#: src/window.rs:859
+#: src/window.rs:962
 #, no-c-format
 msgid "Delete Torrent?"
 msgstr "Видалити торент?"
 
 #. Translators: %s is the name of a torrent.
-#: src/window.rs:861
+#: src/window.rs:964
 #, no-c-format
 msgid "“%s” will be removed from the list."
 msgstr "«%s» буде вилучено зі списку."
 
-#: src/window.rs:865
+#: src/window.rs:968
 #, no-c-format
 msgid "Delete Torrents?"
 msgstr "Видалити торенти?"
 
-#: src/window.rs:867
+#: src/window.rs:970
 #, no-c-format
 msgid "%d torrent will be removed from the list."
 msgid_plural "%d torrents will be removed from the list."
@@ -573,43 +634,43 @@ msgstr[0] "%d торент буде вилучено зі списку."
 msgstr[1] "%d торенти буде вилучено зі списку."
 msgstr[2] "%d торентів буде вилучено зі списку."
 
-#: src/window.rs:875
+#: src/window.rs:978
 #, no-c-format
 msgid "Also delete the downloaded files"
 msgstr "Також видалити завантажені файли"
 
-#: src/window.rs:883 ui/add_torrent_dialog.ui:21 ui/window.ui:99
+#: src/window.rs:986 ui/add_torrent_dialog.ui:21 ui/window.ui:99
 #, no-c-format
 msgid "_Cancel"
 msgstr "_Скасувати"
 
-#: src/window.rs:884
+#: src/window.rs:987
 #, no-c-format
 msgid "_Delete"
 msgstr "_Видалити"
 
-#: src/window.rs:953
+#: src/window.rs:1036
 #, no-c-format
 msgid "Could not delete the downloaded files: %s"
 msgstr "Не вдалося видалити завантажені файли: %s"
 
-#: src/window.rs:962
+#: src/window.rs:1045
 #, no-c-format
 msgid "Could not find the downloaded files"
 msgstr "Не вдалося знайти завантажені файли"
 
 #. Translators: %1 is a torrent name, %2 the reason it failed.
-#: src/window.rs:1051
+#: src/window.rs:1166
 #, no-c-format
 msgid "“%1” failed: %2"
 msgstr "Помилка в «%1»: %2"
 
-#: src/window.rs:1063
+#: src/window.rs:1178
 #, no-c-format
 msgid "Download Complete"
 msgstr "Завантаження завершено"
 
-#: src/window.rs:1170
+#: src/window.rs:1296
 #, no-c-format
 msgid "Could not save the torrent: %s"
 msgstr "Не вдалося зберегти торент: %s"
@@ -630,20 +691,24 @@ msgstr "Торент-файл"
 msgid "None chosen"
 msgstr "Не вибрано"
 
-#: ui/add_torrent_dialog.ui:86 ui/preferences_dialog.ui:18
+#: ui/add_torrent_dialog.ui:84 ui/torrent_info_dialog.ui:212
+msgid "Files"
+msgstr "Файли"
+
+#: ui/add_torrent_dialog.ui:116 ui/preferences_dialog.ui:18
 #: ui/torrent_info_dialog.ui:177
 msgid "Download Folder"
 msgstr "Тека завантаження"
 
-#: ui/add_torrent_dialog.ui:98
+#: ui/add_torrent_dialog.ui:128
 msgid "Start Immediately"
 msgstr "Почати одразу"
 
-#: ui/add_torrent_dialog.ui:104 ui/torrent_info_dialog.ui:166
+#: ui/add_torrent_dialog.ui:134 ui/torrent_info_dialog.ui:166
 msgid "Sequential Download"
 msgstr "Послідовне завантаження"
 
-#: ui/add_torrent_dialog.ui:105 ui/torrent_info_dialog.ui:167
+#: ui/add_torrent_dialog.ui:135 ui/torrent_info_dialog.ui:167
 msgid "Download pieces in order, so the start of a file can be opened early"
 msgstr ""
 "Завантажувати частини по порядку, щоб початок файлу можна було відкрити "
@@ -720,10 +785,6 @@ msgstr "Торенти"
 msgid "Show Menu"
 msgstr "Показати меню"
 
-#: ui/shortcuts_dialog.ui:68
-msgid "Select All"
-msgstr "Вибрати все"
-
 #: ui/shortcuts_dialog.ui:69 ui/shortcuts_dialog.ui:76
 msgid "In selection mode"
 msgstr "У режимі вибору"
@@ -756,7 +817,7 @@ msgstr "Швидкість завантаження"
 msgid "Upload Speed"
 msgstr "Швидкість вивантаження"
 
-#: ui/torrent_info_dialog.ui:140 ui/torrent_info_dialog.ui:309
+#: ui/torrent_info_dialog.ui:140 ui/torrent_info_dialog.ui:275
 msgid "Peers"
 msgstr "Піри"
 
@@ -776,10 +837,6 @@ msgstr "Джерело"
 msgid "Copy to clipboard"
 msgstr "Скопіювати до буфера обміну"
 
-#: ui/torrent_info_dialog.ui:212
-msgid "Files"
-msgstr "Файли"
-
 #: ui/torrent_info_dialog.ui:222
 msgid "No File List Yet"
 msgstr "Списку файлів ще немає"
@@ -788,11 +845,15 @@ msgstr "Списку файлів ще немає"
 msgid "The files appear once the torrent's metadata has been downloaded"
 msgstr "Файли з’являться, щойно буде завантажено метадані торента"
 
-#: ui/torrent_info_dialog.ui:332
+#: ui/torrent_info_dialog.ui:239
+msgid "Choose at least one file to download"
+msgstr "Виберіть принаймні один файл для завантаження"
+
+#: ui/torrent_info_dialog.ui:298
 msgid "Trackers"
 msgstr "Трекери"
 
-#: ui/torrent_info_dialog.ui:338
+#: ui/torrent_info_dialog.ui:304
 msgid "Trackers listed by the torrent"
 msgstr "Трекери, зазначені в торенті"
 
