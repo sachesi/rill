@@ -14,10 +14,11 @@ use gettextrs::gettext;
 use gtk::{gio, glib};
 use mtorrent::utils::re_exports::mtorrent_base::input::{MagnetLink, Metainfo};
 
-use super::file_item::FileItem;
+use super::file_item::{self, FileItem};
 use crate::engine::{PeerInfo, TorrentEngine, TorrentUiState, UiUpdate};
 use crate::storage::Storage;
 use crate::util::{format_eta, format_rate, format_size};
+use crate::window::RillWindow;
 
 /// How long a change of the sequential switch wins over snapshots that still carry the
 /// old value: the wait below, plus the time until the restarted torrent sends its first
@@ -31,6 +32,10 @@ const METADATA_RETRY: Duration = Duration::from_secs(5);
 /// change restarts the torrent, which costs it its peers, so a burst of flicking the
 /// switch back and forth is worth only one restart.
 const SEQUENTIAL_DEBOUNCE: Duration = Duration::from_secs(1);
+
+/// How long the file checks wait for the user to settle. Longer than the switch's: picking
+/// files is a run of clicks, and each change restarts the torrent.
+const FILES_DEBOUNCE: Duration = Duration::from_secs(2);
 
 mod imp {
     use super::*;
@@ -69,6 +74,10 @@ mod imp {
         #[template_child]
         pub files: TemplateChild<gio::ListStore>,
         #[template_child]
+        pub files_view: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub files_banner: TemplateChild<adw::Banner>,
+        #[template_child]
         pub peers_list: TemplateChild<gtk::ListBox>,
         #[template_child]
         pub trackers_list: TemplateChild<gtk::ListBox>,
@@ -81,6 +90,7 @@ mod imp {
         pub pieces: Rc<RefCell<Vec<u8>>>,
         pub engine: RefCell<Option<Rc<TorrentEngine>>>,
         pub storage: RefCell<Option<Storage>>,
+        pub window: glib::WeakRef<RillWindow>,
         /// Set while the switch is changed from a snapshot rather than by the user.
         pub updating: Cell<bool>,
         pub sequential_changed: Cell<Option<Instant>>,
@@ -88,6 +98,8 @@ mod imp {
         /// overtaken by a later change. Shared with the waiting ones, which outlive a
         /// dialog closed right after the switch moved.
         pub sequential_changes: Rc<Cell<u64>>,
+        /// Counts changes of the file checks, as `sequential_changes` does the switch's.
+        pub files_changes: Rc<Cell<u64>>,
         pub metadata_loaded: Cell<bool>,
         pub metadata_loading: Cell<bool>,
         /// When the metadata was last looked for. A magnet link has none until its peers
@@ -146,6 +158,13 @@ mod imp {
                     }
                 });
 
+            self.files_view.set_factory(Some(&file_item::factory()));
+            let weak = obj.downgrade();
+            file_item::add_selection_menu(&self.files_view, &self.files, move || {
+                if let Some(dialog) = weak.upgrade() {
+                    dialog.files_toggled();
+                }
+            });
             self.peers_list
                 .set_placeholder(Some(&placeholder(&gettext("No peers connected"))));
             self.trackers_list
@@ -182,9 +201,15 @@ glib::wrapper! {
 }
 
 impl TorrentInfoDialog {
-    pub fn new(update: &UiUpdate, engine: Rc<TorrentEngine>, storage: Storage) -> Self {
+    pub fn new(
+        window: &RillWindow,
+        update: &UiUpdate,
+        engine: Rc<TorrentEngine>,
+        storage: Storage,
+    ) -> Self {
         let dialog: Self = glib::Object::new();
         let imp = dialog.imp();
+        imp.window.set(Some(window));
         imp.info_hash.replace(update.info_hash.clone());
         imp.engine.replace(Some(engine));
         imp.storage.replace(Some(storage));
@@ -311,6 +336,31 @@ impl TorrentInfoDialog {
         ));
     }
 
+    fn files_toggled(&self) {
+        let imp = self.imp();
+        let selected = file_item::selected_files(&imp.files);
+        let hash = imp.info_hash.borrow().clone();
+        let window = imp.window.clone();
+        let changes = imp.files_changes.clone();
+        let change = changes.get().wrapping_add(1);
+        changes.set(change);
+        // Nothing to download is not applied: the torrent keeps what it had, and a change
+        // still waiting is dropped.
+        let none = selected.as_ref().is_some_and(Vec::is_empty);
+        imp.files_banner.set_revealed(none);
+        if none {
+            return;
+        }
+        // Applied even when the dialog has closed in the meantime, as the switch's is.
+        glib::timeout_add_local_once(FILES_DEBOUNCE, move || {
+            if changes.get() == change
+                && let Some(window) = window.upgrade()
+            {
+                window.set_selected_files(&hash, selected);
+            }
+        });
+    }
+
     fn update_peers(&self, peers: &[PeerInfo]) {
         let imp = self.imp();
         let list = &imp.peers_list;
@@ -371,11 +421,18 @@ impl TorrentInfoDialog {
                     imp.shown_trackers.replace(trackers);
                 }
                 if !files.is_empty() {
-                    let items: Vec<FileItem> = files
-                        .iter()
-                        .map(|(path, size)| FileItem::new(path, *size))
-                        .collect();
-                    imp.files.splice(0, imp.files.n_items(), &items);
+                    let hash = imp.info_hash.borrow().clone();
+                    let selected = imp
+                        .engine
+                        .borrow()
+                        .as_ref()
+                        .and_then(|engine| engine.selected_files(&hash));
+                    let weak = dialog.downgrade();
+                    file_item::fill(&imp.files, &files, selected.as_deref(), move || {
+                        if let Some(dialog) = weak.upgrade() {
+                            dialog.files_toggled();
+                        }
+                    });
                     imp.files_stack.set_visible_child_name("list");
                     imp.metadata_loaded.set(true);
                 }
@@ -480,15 +537,7 @@ fn read_metadata(uri: &str, output_dir: &Path) -> (Vec<(String, u64)>, Vec<Strin
         return (Vec::new(), magnet_trackers(uri));
     };
 
-    let files = match meta.files() {
-        Some(files) => files
-            .map(|(len, path)| (path.to_string_lossy().into_owned(), len as u64))
-            .collect(),
-        None => vec![(
-            meta.name().unwrap_or_default().to_string(),
-            meta.length().unwrap_or(0) as u64,
-        )],
-    };
+    let files = file_item::torrent_files(&meta);
     let mut trackers: Vec<String> = meta.announce().map(|t| t.to_string()).into_iter().collect();
     for tier in meta.announce_list().into_iter().flatten() {
         for tracker in tier {

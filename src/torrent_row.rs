@@ -228,6 +228,12 @@ impl TorrentRow {
         }
     }
 
+    /// Notes that the torrent's run is being replaced by one that makes files the last one
+    /// did not have, so they are not missed before it has.
+    pub fn expect_new_files(&self) {
+        self.imp().files_made.set(false);
+    }
+
     /// Whether the torrent's files were found gone since it last ran.
     pub fn files_missing(&self) -> bool {
         self.imp().files_missing.get()

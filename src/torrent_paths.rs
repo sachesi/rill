@@ -156,6 +156,9 @@ pub fn content_layout(uri: &str, output_dir: &Path) -> Option<ContentLayout> {
 /// `None` when every file is there, or when there is no telling: without the metadata only
 /// a missing content folder says the files are gone.
 ///
+/// Only the `selected` files count, or all of them when it is `None`: mtorrent removes the
+/// others it made when the run ends.
+///
 /// mtorrent takes the pieces its progress file lists as downloaded without reading them
 /// again. With `forget`, the pieces of the missing files are struck from that file, for the
 /// torrent to download them again rather than finish at once with nothing on disk; that
@@ -164,6 +167,7 @@ pub fn find_missing_content(
     uri: &str,
     output_dir: &Path,
     layout: Option<&ContentLayout>,
+    selected: Option<&[usize]>,
     forget: bool,
 ) -> Option<MissingContent> {
     // An unmounted disk takes the download folder with it, and every torrent in it would
@@ -182,9 +186,13 @@ pub fn find_missing_content(
     let mut offset = 0usize;
     let mut present_bytes = 0;
     let mut missing = Vec::new();
-    for (length, path) in &layout.files {
+    for (index, (length, path)) in layout.files.iter().enumerate() {
         // Sizes that add up to more bytes than there are say nothing of the files.
         let end = offset.checked_add(*length)?;
+        if selected.is_some_and(|selected| !selected.contains(&index)) {
+            offset = end;
+            continue;
+        }
         let there = *length == 0
             || std::fs::metadata(layout.content.join(path))
                 .is_ok_and(|meta| meta.is_file() && meta.len() >= *length as u64);
@@ -483,7 +491,7 @@ mod tests {
         std::fs::write(output_dir.join("show/one"), [0; 10]).unwrap();
         std::fs::write(output_dir.join("show/two"), [0; 10]).unwrap();
         let layout = content_layout(&uri, output_dir);
-        let check = |forget| find_missing_content(&uri, output_dir, layout.as_ref(), forget);
+        let check = |forget| find_missing_content(&uri, output_dir, layout.as_ref(), None, forget);
         assert_eq!(check(true), None);
 
         std::fs::remove_file(output_dir.join("show/two")).unwrap();
@@ -543,10 +551,31 @@ mod tests {
             uri,
             output_dir,
             false,
+            None,
             h.tx.clone(),
         );
         let update = h.wait_for_update(&hash, std::time::Duration::from_secs(20), |u| u.total > 0);
         assert_eq!(update.downloaded, 0);
+    }
+    #[test]
+    fn files_left_out_of_the_selection_are_not_missed() {
+        let dir = crate::test_support::ScratchDir::new("missing-selection");
+        let output_dir = dir.path();
+        let uri = torrent_with_progress(output_dir, &[("one", 10), ("two", 10)]);
+        std::fs::write(output_dir.join("show/one"), [0; 10]).unwrap();
+        let layout = content_layout(&uri, output_dir);
+        let check = |selected: &[usize]| {
+            find_missing_content(&uri, output_dir, layout.as_ref(), Some(selected), false)
+        };
+
+        assert_eq!(check(&[0]), None);
+        assert_eq!(
+            check(&[1]),
+            Some(MissingContent {
+                present_bytes: 0,
+                present_pieces: 2
+            })
+        );
     }
 
     #[test]
@@ -567,7 +596,7 @@ mod tests {
         let uri = uri.to_string_lossy();
         let layout = content_layout(&uri, output_dir);
         assert_eq!(
-            find_missing_content(&uri, output_dir, layout.as_ref(), false),
+            find_missing_content(&uri, output_dir, layout.as_ref(), None, false),
             None
         );
     }
@@ -578,11 +607,14 @@ mod tests {
         let uri = "magnet:?xt=urn:btih:0123456789012345678901234567890123456789&dn=Show";
         std::fs::create_dir_all(dir.path().join("Show")).unwrap();
         assert!(content_layout(uri, dir.path()).is_none());
-        assert_eq!(find_missing_content(uri, dir.path(), None, false), None);
+        assert_eq!(
+            find_missing_content(uri, dir.path(), None, None, false),
+            None
+        );
 
         std::fs::remove_dir(dir.path().join("Show")).unwrap();
         assert_eq!(
-            find_missing_content(uri, dir.path(), None, false),
+            find_missing_content(uri, dir.path(), None, None, false),
             Some(MissingContent {
                 present_bytes: 0,
                 present_pieces: 0
@@ -590,7 +622,10 @@ mod tests {
         );
         // Nor does anything count when the download folder itself is gone.
         let unmounted = dir.path().join("unmounted");
-        assert_eq!(find_missing_content(uri, &unmounted, None, false), None);
+        assert_eq!(
+            find_missing_content(uri, &unmounted, None, None, false),
+            None
+        );
     }
 
     #[test]

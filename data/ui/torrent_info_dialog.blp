@@ -205,51 +205,29 @@ template $RillTorrentInfoDialog: Adw.Dialog {
             StackPage {
               name: "list";
 
-              child: ScrolledWindow {
-                hscrollbar-policy: never;
+              child: Box {
+                orientation: vertical;
 
-                child: ListView {
-                  model: NoSelection {
-                    model: Gio.ListStore files {
-                      item-type: typeof<$RillFileItem>;
-                    };
-                  };
+                Adw.Banner files_banner {
+                  title: _("Choose at least one file to download");
+                }
 
-                  factory: BuilderListItemFactory {
-                    template ListItem {
-                      activatable: false;
+                ScrolledWindow {
+                  hscrollbar-policy: never;
+                  vexpand: true;
 
-                      child: Box {
-                        spacing: 12;
-                        margin-top: 8;
-                        margin-bottom: 8;
-                        margin-start: 6;
-                        margin-end: 6;
-
-                        Label {
-                          label: bind template.item as <$RillFileItem>.path;
-                          xalign: 0;
-                          hexpand: true;
-                          ellipsize: middle;
-                        }
-
-                        Label {
-                          label: bind template.item as <$RillFileItem>.size-text;
-
-                          styles [
-                            "caption",
-                            "dim-label",
-                            "numeric",
-                          ]
-                        }
+                  child: ListView files_view {
+                    model: NoSelection {
+                      model: Gio.ListStore files {
+                        item-type: typeof<$RillFileItem>;
                       };
-                    }
-                  };
+                    };
 
-                  styles [
-                    "rich-list",
-                  ]
-                };
+                    styles [
+                      "rich-list",
+                    ]
+                  };
+                }
               };
             }
           };

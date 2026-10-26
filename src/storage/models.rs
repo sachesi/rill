@@ -18,6 +18,8 @@ pub struct SavedTorrent {
     pub total_pieces: u64,
     pub downloaded_pieces: u64,
     pub sequential: bool,
+    /// The indices of the files to download, or `None` for all of them.
+    pub selected_files: Option<Vec<usize>>,
 }
 
 impl SavedTorrent {
@@ -45,6 +47,7 @@ impl SavedTorrent {
             total_pieces: 0,
             downloaded_pieces: 0,
             sequential: false,
+            selected_files: None,
         }
     }
 }
