@@ -58,6 +58,12 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.4.0" date="2026-10-26">
+      <description>
+        <p>A torrent's files can be chosen one by one, in the add dialog or later on the Files page of its details, and only the checked ones are downloaded. A right click on either list checks or unchecks them all. Unchecking a file leaves what is already on disk in place.</p>
+        <p>Rill now uses mtorrent 0.10.1.</p>
+      </description>
+    </release>
     <release version="0.3.3" date="2026-09-29">
       <description>
         <p>Rill now uses mtorrent 0.9.0. A paused torrent closes its connections and stops its work before it ends, rather than being cut off in the middle.</p>

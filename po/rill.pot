@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: rill 0.3.3\n"
+"Project-Id-Version: rill 0.4.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/rill/issues\n"
-"POT-Creation-Date: 2026-10-26 18:40+0200\n"
+"POT-Creation-Date: 2026-10-26 18:48+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -105,11 +105,23 @@ msgstr ""
 
 #: data/io.github.sachesi.rill.metainfo.xml:63
 msgid ""
+"A torrent's files can be chosen one by one, in the add dialog or later on "
+"the Files page of its details, and only the checked ones are downloaded. A "
+"right click on either list checks or unchecks them all. Unchecking a file "
+"leaves what is already on disk in place."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:64
+msgid "Rill now uses mtorrent 0.10.1."
+msgstr ""
+
+#: data/io.github.sachesi.rill.metainfo.xml:69
+msgid ""
 "Rill now uses mtorrent 0.9.0. A paused torrent closes its connections and "
 "stops its work before it ends, rather than being cut off in the middle."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:64
+#: data/io.github.sachesi.rill.metainfo.xml:70
 msgid ""
 "The window no longer waits on the disk or the database once it is up, and "
 "the DHT nodes Rill knows are saved on quit, so the next start finds peers "
@@ -119,7 +131,7 @@ msgid ""
 "worker. Download folders whose names are not UTF-8 are kept as they are."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:69
+#: data/io.github.sachesi.rill.metainfo.xml:75
 msgid ""
 "Rill finds peers through the DHT much sooner. It sent no more than ten DHT "
 "queries at a time, so searching for a torrent's peers waited behind the "
@@ -127,14 +139,14 @@ msgid ""
 "starts fewer threads."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:70
+#: data/io.github.sachesi.rill.metainfo.xml:76
 msgid ""
 "Uninstalling a build from source refreshes the icon cache, so removing a per-"
 "user install no longer leaves Rill without icons when it is also installed "
 "for the whole system."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:75
+#: data/io.github.sachesi.rill.metainfo.xml:81
 msgid ""
 "Rill now uses mtorrent 0.6.1, which closes a torrent's uTP connections "
 "before the torrent stops. A torrent that is paused and resumed, or switched "
@@ -144,7 +156,7 @@ msgid ""
 "are no longer reported as errors."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:80
+#: data/io.github.sachesi.rill.metainfo.xml:86
 msgid ""
 "Torrents pick up where they left off after Rill restarts. The list can be "
 "ordered by name, size or progress, every torrent can be paused or resumed at "
@@ -153,7 +165,7 @@ msgid ""
 "warns when a torrent needs more room than its folder has."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:81
+#: data/io.github.sachesi.rill.metainfo.xml:87
 msgid ""
 "A torrent whose files were removed is paused and marked as having files not "
 "found, instead of showing as finished, and resuming it downloads them again. "
@@ -162,7 +174,7 @@ msgid ""
 "All starts torrents only as far as the limit allows."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:82
+#: data/io.github.sachesi.rill.metainfo.xml:88
 msgid ""
 "Rill now uses mtorrent 0.6.0. Each running torrent listens on a port of its "
 "own, the DHT keeps working when another client holds port 6881, and magnet "
@@ -170,7 +182,7 @@ msgid ""
 "on every update, which could stall the display with many torrents and peers."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:87
+#: data/io.github.sachesi.rill.metainfo.xml:93
 msgid ""
 "The application id is now io.github.sachesi.rill. The dialogs adapt to "
 "narrow windows and open as bottom sheets on phones, and the details of a "
@@ -178,7 +190,7 @@ msgid ""
 "top."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:88
+#: data/io.github.sachesi.rill.metainfo.xml:94
 msgid ""
 "The add dialog shows the folder a torrent will be saved to. Selection mode "
 "has a bar with Resume, Pause and Delete, a search that matches nothing says "
@@ -187,7 +199,7 @@ msgid ""
 "simultaneous downloads applies at once."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:89
+#: data/io.github.sachesi.rill.metainfo.xml:95
 msgid ""
 "Preferences no longer offer bandwidth limits, an upload limit, a seeding "
 "ratio or a logging switch: none of them had any effect on transfers. The "
@@ -195,7 +207,7 @@ msgid ""
 "no longer shows checkboxes that did nothing."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:94
+#: data/io.github.sachesi.rill.metainfo.xml:100
 msgid ""
 "The same torrent added as a magnet link and as a file is one transfer, not "
 "two. A torrent you pause is no longer resumed by the download queue, a "
@@ -205,19 +217,19 @@ msgid ""
 "starts."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:95
+#: data/io.github.sachesi.rill.metainfo.xml:101
 msgid ""
 "Magnet links can be dropped on the window, closing the window quits when "
 "there is no system tray to reopen it from, and more of the interface is "
 "translated."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:100
+#: data/io.github.sachesi.rill.metainfo.xml:106
 msgid ""
 "More reliable tracking of each torrent's state across pauses and restarts."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:105
+#: data/io.github.sachesi.rill.metainfo.xml:111
 msgid ""
 "Ukrainian translation. The source of a torrent can be copied from its "
 "details, and its folder opened from the context menu. File paths inside a "
@@ -225,17 +237,17 @@ msgid ""
 "addresses are refused."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:110
+#: data/io.github.sachesi.rill.metainfo.xml:116
 msgid "A new application icon."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:115
+#: data/io.github.sachesi.rill.metainfo.xml:121
 msgid ""
 "Database writes and torrent metadata parsing no longer run on the thread "
 "that draws the window."
 msgstr ""
 
-#: data/io.github.sachesi.rill.metainfo.xml:120
+#: data/io.github.sachesi.rill.metainfo.xml:126
 msgid "First release."
 msgstr ""
 
