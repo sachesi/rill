@@ -709,6 +709,7 @@ async fn run_torrent(cmd: StartCmd, shared: Shared) {
             app::main::DownloadStrategy::RarestFirst
         },
         mode: app::main::Mode::Leech,
+        file_selection: app::main::FileSelection::All,
     };
     let ctx = app::main::Context {
         dht_handle: Some(shared.dht),

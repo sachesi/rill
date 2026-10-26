@@ -393,7 +393,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rill-storage-{}", std::process::id()));
         let runtime = storage_runtime().unwrap();
         let (client, server) =
-            new_async_storage(&dir, std::iter::once((4, PathBuf::from("file")))).unwrap();
+            new_async_storage(&dir, std::iter::once((4, PathBuf::from("file"))), &[]).unwrap();
         runtime.spawn(server.run());
         let data = runtime.block_on(async {
             client.write_block(0, vec![1, 2, 3, 4]).await.unwrap();
